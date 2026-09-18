@@ -238,32 +238,36 @@ export default function Settings() {
 
       {error && <p className="error">{error}</p>}
 
-      <section className="card">
-        <h2 className="card-title">{t.credits}</h2>
-        {/*
-          Yahoo y Rakuten EXIGEN mostrar un crédito de atribución para usar sus
-          APIs gratis. El texto exacto lo fija cada uno en sus términos: hay que
-          copiarlo literal de su portal de desarrolladores antes de publicar.
-        */}
-        <p className="hint">
-          Yahoo!ショッピング (
-          <a href="https://developer.yahoo.co.jp/" target="_blank" rel="noreferrer noopener">
-            Yahoo! JAPAN Web Services
-          </a>
-          )
-        </p>
-        <p className="hint">
-          楽天市場 (
-          <a href="https://webservice.rakuten.co.jp/" target="_blank" rel="noreferrer noopener">
-            Rakuten Web Service
-          </a>
-          )
-        </p>
-      </section>
-
       <button type="button" className="button button--danger" onClick={() => api.logout()}>
         {t.logout}
       </button>
+
+      {/*
+        Créditos obligatorios. Los dos servicios condicionan el uso gratuito de
+        sus APIs a mostrarlos, con un texto y un destino que fijan ellos:
+
+          · Yahoo  exige «Webサービス by Yahoo! JAPAN» (o su versión inglesa)
+            enlazando a developer.yahoo.co.jp/sitemap/, al final de la app, y
+            PROHÍBE alterar su aspecto por CSS o que destaque sobre lo demás.
+          · Rakuten acepta «Supported by Rakuten Developers» hacia
+            developers.rakuten.com, o uno de sus dos banners.
+
+        Por eso este bloque va el último y no lleva estilos propios en los
+        enlaces: se quedan como los pinta el navegador, a propósito.
+      */}
+      <section className="credits">
+        <h2 className="card-title">{t.credits}</h2>
+        <span>
+          <a href="https://developer.yahoo.co.jp/sitemap/" target="_blank" rel="noreferrer noopener">
+            Webサービス by Yahoo! JAPAN
+          </a>
+        </span>
+        <span>
+          <a href="https://developers.rakuten.com/" target="_blank" rel="noreferrer noopener">
+            Supported by Rakuten Developers
+          </a>
+        </span>
+      </section>
     </div>
   );
 }

@@ -672,8 +672,14 @@ body {
   cursor: default;
 }
 
-.card .hint a {
-  color: var(--accent-dark);
+/* Los creditos de Yahoo y Rakuten van sin estilos propios en los enlaces:
+   Yahoo prohibe expresamente cambiarles color, tamano o aspecto por CSS, y que
+   destaquen sobre el resto. Por eso aqui no se toca el <a>. */
+.credits {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 0;
 }
 
 /* Dentro de una tarjeta, un título que no es el primero necesita aire arriba. */
