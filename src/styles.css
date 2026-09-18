@@ -1,0 +1,367 @@
+/* Nefuda · tokens y estilos base. Los valores vienen de los mockups. */
+
+:root {
+  --paper: #f4f1ea;
+  --card: #ffffff;
+  --line: #e1dbcd;
+  --ink: #1a1714;
+  --muted: #5e5751;
+  --accent: #b23a26;
+  --accent-dark: #8e2c1c;
+  --up: #2e6046;
+  --up-bg: #e4eee7;
+  --down-bg: #f6e7e3;
+  --thumb: #ebe5d8;
+
+  --radius-card: 14px;
+  --radius-field: 12px;
+  --tap: 44px;
+
+  --serif: 'Instrument Serif', Georgia, serif;
+  --sans: 'Noto Sans JP', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+/* Móvil primero. El padding inferior respeta la zona segura del iPhone. */
+.screen {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px 20px calc(96px + env(safe-area-inset-bottom));
+}
+
+.screen--login {
+  justify-content: space-between;
+  padding-bottom: calc(34px + env(safe-area-inset-bottom));
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.brand {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 30px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.brand--big {
+  font-size: 52px;
+}
+
+.brand-sub {
+  margin: 2px 0 0;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+/* --- cifras de cabecera --- */
+
+.stats {
+  display: flex;
+  gap: 10px;
+}
+
+.stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+
+.stat-label {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.stat-value {
+  font-family: var(--serif);
+  font-size: 23px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.stat-value--up {
+  color: var(--up);
+}
+
+/* --- campos --- */
+
+.search,
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.search input,
+.field input,
+.field select {
+  height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-field);
+  background: var(--card);
+  font-family: inherit;
+  /* 16px evita que iOS haga zoom al enfocar el campo. */
+  font-size: 16px;
+  color: var(--ink);
+}
+
+/* --- pastillas de filtro --- */
+
+.chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.chips::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  flex: 0 0 auto;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.chip--on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+/* --- lista --- */
+
+.items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  color: inherit;
+  text-decoration: none;
+}
+
+.item-thumb {
+  width: 62px;
+  height: 62px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  object-fit: cover;
+  background: var(--thumb);
+}
+
+.item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.item-name {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.item-meta {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.item-price {
+  flex-shrink: 0;
+  font-family: var(--serif);
+  font-size: 19px;
+}
+
+.badge {
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.badge--down {
+  background: var(--up-bg);
+  color: var(--up);
+}
+
+.badge--up {
+  background: var(--down-bg);
+  color: var(--accent-dark);
+}
+
+/* --- botones --- */
+
+.button {
+  height: 52px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-field);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.button--primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.button--primary:disabled {
+  opacity: 0.6;
+}
+
+.button--quiet {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.icon-button {
+  width: var(--tap);
+  height: var(--tap);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: inherit;
+}
+
+.error {
+  margin: 0;
+  color: var(--accent-dark);
+  font-size: 13px;
+}
+
+.hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* --- login --- */
+
+.login-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+}
+
+.login-brand {
+  margin-bottom: 8px;
+}
+
+.lang-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+/* --- barra inferior --- */
+
+.tabbar {
+  position: fixed;
+  inset: auto 0 0 0;
+  height: calc(84px + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  background: var(--card);
+  border-top: 1px solid var(--line);
+}
+
+.tab {
+  min-width: 88px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.tab--on {
+  color: var(--accent);
+}
+
+/* El escáner en el centro: es la acción que sustituye a las notas. */
+.tab--scan {
+  width: 58px;
+  min-width: 0;
+  height: 58px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+}

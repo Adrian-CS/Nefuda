@@ -1,0 +1,30 @@
+name = "nefuda"
+main = "src/worker/index.ts"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# La PWA compilada se sirve como estáticos desde el mismo Worker.
+# Las rutas /api/* no existen como fichero, así que caen al Worker.
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
+
+[triggers]
+crons = ["0 21 * * *"]   # 06:00 JST
+
+[[d1_databases]]
+binding = "DB"
+database_name = "nefuda"
+database_id = "<id que devuelve: npx wrangler d1 create nefuda>"
+
+[[r2_buckets]]
+binding = "FOTOS"
+bucket_name = "nefuda-fotos"
+
+# Secretos (no van aquí):
+#   npx wrangler secret put SESSION_SECRET    # cadena aleatoria larga
+#   npx wrangler secret put INVITE_CODE       # para dar de alta a alguien
+#   npx wrangler secret put YAHOO_APP_ID
+#   npx wrangler secret put RAKUTEN_APP_ID
+#
+# En local van en .dev.vars (que está en .gitignore).

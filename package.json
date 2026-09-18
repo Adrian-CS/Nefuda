@@ -1,0 +1,32 @@
+{
+  "name": "nefuda",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:api": "wrangler dev",
+    "build": "tsc -b && vite build",
+    "deploy": "npm run build && wrangler deploy",
+    "db:local": "wrangler d1 execute nefuda --local --file=./schema.sql",
+    "db:remote": "wrangler d1 execute nefuda --remote --file=./schema.sql"
+  },
+  "dependencies": {
+    "@simplewebauthn/browser": "^13.1.0",
+    "@simplewebauthn/server": "^13.1.0",
+    "barcode-detector": "^3.0.7",
+    "jose": "^6.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "wouter": "^3.5.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260101.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "vite-plugin-pwa": "^0.21.0",
+    "wrangler": "^4.0.0"
+  }
+}
