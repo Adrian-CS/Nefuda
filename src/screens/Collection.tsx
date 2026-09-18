@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { api, type CollectionItem, type Vocab, type VocabRow } from '../lib/api';
 import { useI18n, yen, type Lang } from '../i18n';
+import { IconScan, IconSettings } from '../icons';
 
 /** Nombre de una fila de vocabulario en el idioma activo. */
 export const label = (row: VocabRow, lang: Lang) =>
@@ -57,7 +58,7 @@ export default function Collection() {
         </div>
         <nav className="header-actions">
           <Link href="/ajustes" className="icon-button" aria-label={t.settings}>
-            {/* icono */}
+            <IconSettings />
           </Link>
         </nav>
       </header>
@@ -136,7 +137,9 @@ export default function Collection() {
 
       <nav className="tabbar">
         <Link href="/" className="tab tab--on">{t.navCollection}</Link>
-        <Link href="/escanear" className="tab tab--scan" aria-label={t.scan} />
+        <Link href="/escanear" className="tab tab--scan" aria-label={t.scan}>
+          <IconScan />
+        </Link>
         <Link href="/alertas" className="tab">{t.navAlerts}</Link>
       </nav>
     </div>

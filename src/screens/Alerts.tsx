@@ -3,6 +3,7 @@ import { Link } from 'wouter';
 import { api, type AlertsPayload, type Vocab } from '../lib/api';
 import { useI18n, yen } from '../i18n';
 import { label } from './Collection';
+import { IconScan, IconSettings } from '../icons';
 
 /**
  * Alertas. Dos listas: lo que el cron ya avisó por el webhook, y lo que sigue
@@ -40,7 +41,7 @@ export default function Alerts() {
           <p className="brand-sub">値札 · {t.navAlerts}</p>
         </div>
         <Link href="/ajustes" className="icon-button" aria-label={t.settings}>
-          ⚙
+          <IconSettings />
         </Link>
       </header>
 
@@ -118,7 +119,9 @@ export default function Alerts() {
 
       <nav className="tabbar">
         <Link href="/" className="tab">{t.navCollection}</Link>
-        <Link href="/escanear" className="tab tab--scan" aria-label={t.scan} />
+        <Link href="/escanear" className="tab tab--scan" aria-label={t.scan}>
+          <IconScan />
+        </Link>
         <Link href="/alertas" className="tab tab--on">{t.navAlerts}</Link>
       </nav>
     </div>

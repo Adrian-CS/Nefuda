@@ -9,6 +9,7 @@ import {
 } from '../lib/api';
 import { useI18n, yen, type Lang } from '../i18n';
 import { label } from './Collection';
+import { IconClose } from '../icons';
 
 /** Un punto de la gráfica: un día, el precio más bajo de ese día. */
 interface Point {
@@ -262,7 +263,7 @@ export default function Item() {
           </p>
         </div>
         <Link href="/" className="icon-button" aria-label={t.back}>
-          ✕
+          <IconClose />
         </Link>
       </header>
 

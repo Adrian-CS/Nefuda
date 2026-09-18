@@ -3,6 +3,7 @@ import { Link } from 'wouter';
 import { startRegistration } from '@simplewebauthn/browser';
 import { api, type Credential, type Me } from '../lib/api';
 import { useI18n, type Lang } from '../i18n';
+import { IconClose } from '../icons';
 
 const LANGS: { id: Lang; label: string }[] = [
   { id: 'es', label: 'Español' },
@@ -116,7 +117,7 @@ export default function Settings() {
           <p className="brand-sub">{me?.email ?? ''}</p>
         </div>
         <Link href="/" className="icon-button" aria-label={t.back}>
-          ✕
+          <IconClose />
         </Link>
       </header>
 

@@ -4,6 +4,7 @@ import { api, type LookupResult, type Vocab } from '../lib/api';
 import { useI18n, yen } from '../i18n';
 import { label } from './Collection';
 import { useScanner } from '../hooks/useScanner';
+import { IconClose } from '../icons';
 
 /**
  * Escáner. Es la pantalla que sustituye a las notas del móvil: apuntar a la
@@ -137,7 +138,7 @@ export default function Scan() {
           <p className="brand-sub">{t.scanHint}</p>
         </div>
         <Link href="/" className="icon-button" aria-label={t.back}>
-          ✕
+          <IconClose />
         </Link>
       </header>
 
