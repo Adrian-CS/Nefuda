@@ -33,6 +33,10 @@ export default function Scan() {
   const [paid, setPaid] = useState('');
   const [target, setTarget] = useState('');
 
+  // Alta manual, cuando ninguna tienda conoce el codigo.
+  const [manualName, setManualName] = useState('');
+  const [manualMaker, setManualMaker] = useState('');
+
   // Un código se detecta muchas veces por segundo: sin esto saldrían varias
   // consultas a la vez para el mismo JAN.
   const looking = useRef(false);
@@ -102,8 +106,34 @@ export default function Scan() {
     setError(null);
     setPaid('');
     setTarget('');
+    setManualName('');
+    setManualMaker('');
     looking.current = false;
     void start();
+  }
+
+  /**
+   * Da de alta el producto y cae en la MISMA hoja que una busqueda con exito:
+   * a partir de aqui se elige categoria, grado y objetivo igual que siempre.
+   * Se queda sin precios, claro, hasta que anotes uno a mano desde la ficha.
+   */
+  async function createByHand() {
+    if (manualName.trim() === '') return;
+    setSaving(true);
+    setError(null);
+    try {
+      const product = await api.createProduct({
+        jan: jan || null,
+        name: manualName.trim(),
+        maker: manualMaker.trim() || null,
+      });
+      setNotFound(false);
+      setHit({ product, prices: [] });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function save(statusId: number | undefined, keepPaid: boolean) {
@@ -188,6 +218,35 @@ export default function Scan() {
               <>
                 <p className="hint hint--block">{t.notFound}</p>
                 <p className="item-meta">{jan}</p>
+
+                <label className="field">
+                  <span className="field-label">{t.productName}</span>
+                  <input
+                    type="text"
+                    value={manualName}
+                    onChange={(e) => setManualName(e.target.value)}
+                  />
+                </label>
+
+                <label className="field">
+                  <span className="field-label">{t.maker}</span>
+                  <input
+                    type="text"
+                    value={manualMaker}
+                    onChange={(e) => setManualMaker(e.target.value)}
+                  />
+                </label>
+
+                {error && <p className="error">{error}</p>}
+
+                <button
+                  type="button"
+                  className="button button--primary"
+                  disabled={saving || manualName.trim() === ''}
+                  onClick={createByHand}
+                >
+                  {t.createByHand}
+                </button>
                 <button type="button" className="button button--quiet" onClick={reset}>
                   {t.retry}
                 </button>
@@ -206,7 +265,8 @@ export default function Scan() {
                     {/* El nombre llega en japonés de la tienda y no se traduce. */}
                     <span className="item-name">{hit.product.name}</span>
                     <span className="item-meta">
-                      {hit.product.maker ?? ''} · {hit.product.jan}
+                      {hit.product.maker ?? ''}
+                      {hit.product.jan ? ` · ${hit.product.jan}` : ''}
                     </span>
                   </div>
                 </div>

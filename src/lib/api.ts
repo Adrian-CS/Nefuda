@@ -80,8 +80,18 @@ export interface ItemDetail extends CollectionItem {
   prices_by_condition: PriceByCondition[];
 }
 
+/** Ficha del catalogo comun. `jan` es nulo en lo dado de alta a mano. */
+export interface Product {
+  id: number;
+  jan: string | null;
+  name: string;
+  maker: string | null;
+  api_category: string | null;
+  image_url: string | null;
+}
+
 export interface LookupResult {
-  product: { id: number; jan: string; name: string; maker: string | null; image_url: string | null };
+  product: Product;
   prices: { shop: string; price: number; url: string | null }[];
 }
 
@@ -209,6 +219,13 @@ export const api = {
     call<{ ok: true }>(`/api/items/${itemId}`, { method: 'DELETE' }),
 
   lookup: (jan: string) => call<LookupResult>(`/api/lookup?jan=${encodeURIComponent(jan)}`),
+
+  /**
+   * Alta manual, para lo que no vende ninguna tienda. Si el JAN ya existe en el
+   * catalogo comun devuelve ese producto en vez de duplicarlo.
+   */
+  createProduct: (body: { jan?: string | null; name: string; maker?: string | null }) =>
+    call<Product>('/api/products', { method: 'POST', body: JSON.stringify(body) }),
 
   addItem: (body: {
     product_id: number;

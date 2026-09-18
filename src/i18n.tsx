@@ -34,6 +34,9 @@ const DICT = {
     languageHint: 'IDIOMA',
 
     // --- comunes ---
+    productName: 'Nombre del producto',
+    maker: 'Fabricante',
+    createByHand: 'Darlo de alta a mano',
     save: 'Guardar',
     cancel: 'Cancelar',
     remove: 'Eliminar',
@@ -123,6 +126,9 @@ const DICT = {
     languageHint: 'LANGUAGE',
 
     // --- comunes ---
+    productName: 'Product name',
+    maker: 'Maker',
+    createByHand: 'Add it by hand',
     save: 'Save',
     cancel: 'Cancel',
     remove: 'Delete',
@@ -212,6 +218,9 @@ const DICT = {
     languageHint: '表示言語',
 
     // --- comunes ---
+    productName: '商品名',
+    maker: 'メーカー',
+    createByHand: '手動で登録する',
     save: '保存',
     cancel: 'キャンセル',
     remove: '削除',

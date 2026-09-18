@@ -528,6 +528,49 @@ async function deleteCredential(userId: string, credentialId: string, env: Env) 
   return res.meta.changes > 0 ? { ok: true } : null;
 }
 
+/**
+ * Alta manual de un producto, para lo que ninguna tienda tiene: doujinshi,
+ * cosas descatalogadas, importaciones, o cajas cuyo codigo no reconoce nadie.
+ *
+ * Ojo con una cosa: el catalogo es COMUN a las dos cuentas, asi que esto no
+ * lleva user_id. De ahi que, si el JAN ya existe, se devuelva el producto que
+ * hay en lugar de actualizarlo: nadie deberia poder renombrar de un plumazo la
+ * ficha que la otra persona ya esta siguiendo.
+ *
+ * El JAN es opcional. Si lo lleva, el cron lo consultara cada manana por si
+ * algun dia aparece en una tienda; sin el, solo tendra los precios que anotes
+ * a mano, que es justo lo que toca para lo que no se vende en ningun sitio.
+ */
+async function createProduct(body: any, env: Env) {
+  const name = String(body.name ?? '').trim();
+  if (name === '') return { error: 'falta el nombre' };
+
+  const jan = body.jan ? String(body.jan).trim() : null;
+  if (jan !== null && !/^\d{8,13}$/.test(jan)) return { error: 'JAN inválido' };
+
+  if (jan !== null) {
+    const existing = await env.DB.prepare(
+      `SELECT id, jan, name, maker, api_category, image_url FROM products WHERE jan = ?1`
+    )
+      .bind(jan)
+      .first<any>();
+    // Ya estaba: se devuelve tal cual, y el 200 de la ruta lo distingue de un
+    // alta nueva. Renombrarlo pisaria la ficha que la otra persona ya sigue.
+    if (existing) return { product: existing, created: false };
+  }
+
+  const maker = body.maker ? String(body.maker).trim().slice(0, 120) : null;
+
+  const product = await env.DB.prepare(
+    `INSERT INTO products (jan, name, maker, image_url) VALUES (?1, ?2, ?3, NULL)
+     RETURNING id, jan, name, maker, api_category, image_url`
+  )
+    .bind(jan, name.slice(0, 200), maker)
+    .first<any>();
+
+  return product ? { product, created: true } : null;
+}
+
 // ---------------------------------------------------------------- entrada
 
 export default {
@@ -664,6 +707,14 @@ export default {
           const done = await deleteItem(userId, one[1], env);
           return done ? json(done) : json({ error: 'no encontrado' }, 404);
         }
+      }
+
+      // Lo que no encuentra ninguna tienda entra por aqui, a mano.
+      if (request.method === 'POST' && path === '/api/products') {
+        const made = await createProduct(await request.json(), env);
+        if (!made) return json({ error: 'no se pudo crear' }, 500);
+        if (made.error) return json(made, 400);
+        return json(made.product, made.created ? 201 : 200);
       }
 
       if (request.method === 'GET' && path === '/api/alerts') {
