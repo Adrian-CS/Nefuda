@@ -525,3 +525,158 @@ body {
 .item-thumb--empty {
   border: 1px solid var(--line);
 }
+
+/* --- ficha --------------------------------------------------------------- */
+
+.item-title {
+  min-width: 0;
+  flex: 1;
+}
+
+.item-title-name {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+
+.card-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.item-photo {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.item-photo img,
+.item-photo-empty {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  max-height: 46vh;
+  object-fit: cover;
+  border-radius: var(--radius-card);
+  background: var(--thumb);
+  border: 1px solid var(--line);
+}
+
+/* El input de fichero va oculto dentro del label: así la diana táctil es el
+   botón entero y no el control gris del navegador. */
+.button--photo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chips--wrap {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+.textarea {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-field);
+  background: var(--card);
+  font-family: inherit;
+  font-size: 16px;
+  color: var(--ink);
+  resize: vertical;
+}
+
+.button--danger {
+  background: transparent;
+  border-color: var(--down-bg);
+  color: var(--accent-dark);
+  font-weight: 500;
+}
+
+/* --- gráfica ------------------------------------------------------------- */
+
+.chart {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chart-svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.chart-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  /* Sin esto el grosor de la línea se estira con el viewBox al escalar. */
+  vector-effect: non-scaling-stroke;
+}
+
+.chart-lowest {
+  fill: var(--up);
+}
+
+.chart-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.chart-lowest-label {
+  color: var(--up);
+  font-weight: 700;
+}
+
+/* --- alertas y ajustes --------------------------------------------------- */
+
+/* Verde: una bajada de precio es buena noticia. La subida usa --down-bg. */
+.item-price--down {
+  color: var(--up);
+}
+
+.passkey {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-field);
+}
+
+.passkey .chip:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.card .hint a {
+  color: var(--accent-dark);
+}
+
+/* Dentro de una tarjeta, un título que no es el primero necesita aire arriba. */
+.card .card-title:not(:first-child) {
+  margin-top: 6px;
+}

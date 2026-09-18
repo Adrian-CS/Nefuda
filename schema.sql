@@ -137,6 +137,9 @@ CREATE TABLE IF NOT EXISTS shops (
 INSERT OR IGNORE INTO shops (slug, name, aliases, kind, is_api) VALUES
   ('yahoo',    'Yahoo!ショッピング', '["ヤフーショッピング"]',     'online',   1),
   ('rakuten',  '楽天市場',           '["Rakuten","楽天ブックス"]', 'online',   1),
+  -- Mercari es C2C y no tiene API pública para consultar precios ajenos, y su
+  -- scraping está prohibido: is_api = 0 y los precios entran a mano desde la ficha.
+  ('mercari',  'メルカリ',           '["Mercari"]',                'online',   0),
   ('surugaya', '駿河屋',             '["Suruga-ya","surugaya"]',   'online',   0),
   ('mandarake','まんだらけ',          '["Mandarake"]',              'online',   0),
   ('store',    'Tienda física',      NULL,                         'physical', 0);
