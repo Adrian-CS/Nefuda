@@ -28,12 +28,20 @@ export function useScanner(onDetect: (jan: string) => void) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
+  // getUserMedia tarda, y en ese hueco cabe un stop() o un segundo start()
+  // (StrictMode monta, desmonta y vuelve a montar). Este contador dice si el
+  // stream que acaba de llegar sigue siendo el vigente; si no, se apaga. Sin
+  // esto la camara se queda encendida sin que nadie la use.
+  const genRef = useRef(0);
   const [state, setState] = useState<ScannerState>('idle');
 
   const stop = useCallback(() => {
+    genRef.current += 1;
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    // Safari sigue mostrando el ultimo fotograma si no se suelta el srcObject.
+    if (videoRef.current) videoRef.current.srcObject = null;
     setState('idle');
   }, []);
 
@@ -42,6 +50,7 @@ export function useScanner(onDetect: (jan: string) => void) {
       setState('unsupported');
       return;
     }
+    const gen = ++genRef.current;
     setState('starting');
 
     try {
@@ -49,10 +58,14 @@ export function useScanner(onDetect: (jan: string) => void) {
         // La trasera, y enfocada de cerca: un JAN se lee a diez centímetros.
         video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } },
       });
-      streamRef.current = stream;
 
+      // Llego tarde: por el camino hubo un stop() o un start() mas nuevo.
       const video = videoRef.current;
-      if (!video) return;
+      if (gen !== genRef.current || !video) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      streamRef.current = stream;
       video.srcObject = stream;
       video.setAttribute('playsinline', 'true'); // iOS: sin esto abre a pantalla completa
       await video.play();
@@ -64,7 +77,7 @@ export function useScanner(onDetect: (jan: string) => void) {
       let lastAt = 0;
 
       const tick = async () => {
-        if (!streamRef.current) return;
+        if (!streamRef.current || gen !== genRef.current) return;
         try {
           const codes = await detector.detect(video);
           const raw = codes[0]?.rawValue;

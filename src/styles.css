@@ -368,8 +368,11 @@ body {
 
 /* --- escáner ------------------------------------------------------------ */
 
+/* Sin barra inferior: esta pantalla se cierra con la X, asi que no hace falta
+   reservar los 96px que deja .screen para la tabbar. */
 .screen--scan {
   gap: 16px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
 }
 
 /* 3:4 es la proporción con la que la cámara trasera suele entregar el vídeo;
