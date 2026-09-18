@@ -365,3 +365,160 @@ body {
   background: var(--accent);
   color: #fff;
 }
+
+/* --- escáner ------------------------------------------------------------ */
+
+.screen--scan {
+  gap: 16px;
+}
+
+/* 3:4 es la proporción con la que la cámara trasera suele entregar el vídeo;
+   fijarla evita el salto de maquetación cuando el stream arranca. */
+.viewfinder {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  max-height: 52vh;
+  overflow: hidden;
+  border-radius: var(--radius-card);
+  background: #000;
+}
+
+.viewfinder-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* La ventana de lectura: un JAN se lee a unos diez centímetros, y el marco es
+   lo que le dice a la persona dónde poner la caja. */
+.viewfinder-frame {
+  position: absolute;
+  inset: 22% 10%;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 10px;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.35);
+}
+
+.viewfinder-status {
+  position: absolute;
+  inset: auto 0 12px 0;
+  margin: 0;
+  text-align: center;
+  color: #fff;
+  font-size: 12px;
+}
+
+.hint--block {
+  padding: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  font-size: 13px;
+}
+
+/* Campo + botón en la misma línea, para teclear el JAN a mano. */
+.field-row {
+  display: flex;
+  gap: 8px;
+}
+
+.field-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-grid {
+  display: flex;
+  gap: 10px;
+}
+
+.field-grid .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.button--inline {
+  height: 46px;
+  padding: 0 18px;
+  flex-shrink: 0;
+}
+
+/* --- hoja inferior ------------------------------------------------------ */
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 23, 20, 0.45);
+}
+
+.sheet {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 88dvh;
+  overflow-y: auto;
+  padding: 10px 20px calc(24px + env(safe-area-inset-bottom));
+  background: var(--paper);
+  border-radius: 18px 18px 0 0;
+}
+
+.sheet-grip {
+  width: 38px;
+  height: 4px;
+  margin: 0 auto 4px;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.sheet-product {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Dos líneas de precio separadas: «nuevo en tienda» y «segunda mano» nunca se
+   funden en un único número. */
+.price-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-field);
+}
+
+.price-line--sub {
+  padding: 6px 12px;
+  background: transparent;
+  border: 0;
+}
+
+.price-line-label {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.price-line-value {
+  font-family: var(--serif);
+  font-size: 22px;
+}
+
+.price-line--sub .price-line-value {
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.price-line-value--none {
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.item-thumb--empty {
+  border: 1px solid var(--line);
+}

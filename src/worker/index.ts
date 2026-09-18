@@ -61,7 +61,7 @@ async function vocabFor(db: D1Database, userId: string) {
     db.prepare(`SELECT id, slug, name_es, name_en, name_ja, in_collection, track_price, sort FROM statuses ${mine} ORDER BY sort, id`).bind(userId),
     db.prepare(`SELECT id, slug, name_es, name_en, name_ja, grade, from_api FROM conditions ${mine} ORDER BY grade DESC`).bind(userId),
     db.prepare(`SELECT id, slug, name_es, name_en, name_ja, sort FROM flags ${mine} ORDER BY sort, id`).bind(userId),
-    db.prepare(`SELECT id, slug, name FROM shops ORDER BY id`),
+    db.prepare(`SELECT id, slug, name, kind, is_api FROM shops ORDER BY is_api DESC, id`),
   ]);
   return {
     categories: categories.results,
@@ -181,6 +181,10 @@ async function lookupJan(jan: string, env: Env) {
  * La colección. `best_price` se calcula contra el MISMO grado que tu ejemplar:
  * comparar una figura usada con el precio de tienda nueva infla el valor.
  * Si no hay precio de ese grado, cae a lo que pagaste en vez de inventar.
+ *
+ * `retail_price` es aparte y SOLO del grado 'new': es la línea de «nuevo en
+ * tienda». Sin acotarlo, un precio manual de Mercari más barato se colaría ahí
+ * y la ficha enseñaría segunda mano diciendo que es precio de tienda.
  */
 async function listCollection(userId: string, env: Env) {
   const { results } = await env.DB.prepare(
@@ -191,7 +195,9 @@ async function listCollection(userId: string, env: Env) {
        (SELECT MIN(lp.price) FROM latest_prices lp
          WHERE lp.product_id = ui.product_id AND lp.condition_id = ui.condition_id) AS best_price,
        (SELECT MIN(lp.price) FROM latest_prices lp
-         WHERE lp.product_id = ui.product_id) AS retail_price
+         JOIN conditions c ON c.id = lp.condition_id
+         WHERE lp.product_id = ui.product_id
+           AND c.owner_id IS NULL AND c.slug = 'new') AS retail_price
      FROM user_items ui
      JOIN products p ON p.id = ui.product_id
      WHERE ui.user_id = ?1
@@ -317,6 +323,211 @@ async function getPhoto(userId: string, key: string, env: Env) {
   });
 }
 
+/**
+ * Ficha de un ejemplar. Devuelve los precios AGRUPADOS POR GRADO en vez de un
+ * único «ahora vale»: la pantalla pinta una línea por condición (nuevo en
+ * tienda / segunda mano) sin tener que adivinar nada.
+ */
+async function getItem(userId: string, itemId: string, env: Env) {
+  const item = await env.DB.prepare(
+    `SELECT
+       ui.id, ui.product_id, ui.category_id, ui.status_id, ui.condition_id,
+       ui.paid_price, ui.paid_on, ui.paid_shop_id, ui.sold_price, ui.sold_on,
+       ui.target_price, ui.photo_key, ui.note, ui.created_at,
+       p.jan, p.name, p.maker, p.api_category, p.image_url,
+       (SELECT MIN(lp.price) FROM latest_prices lp
+         WHERE lp.product_id = ui.product_id AND lp.condition_id = ui.condition_id) AS best_price,
+       (SELECT MIN(lp.price) FROM latest_prices lp
+         JOIN conditions c ON c.id = lp.condition_id
+         WHERE lp.product_id = ui.product_id
+           AND c.owner_id IS NULL AND c.slug = 'new') AS retail_price
+     FROM user_items ui
+     JOIN products p ON p.id = ui.product_id
+     WHERE ui.id = ?1 AND ui.user_id = ?2`
+  )
+    .bind(itemId, userId)
+    .first<any>();
+
+  if (!item) return null;
+
+  const [flags, prices] = await env.DB.batch<any>([
+    env.DB.prepare(`SELECT flag_id FROM user_item_flags WHERE user_item_id = ?1`).bind(item.id),
+    // Las columnas sueltas junto a MIN() salen de la fila del mínimo: es una
+    // garantía de SQLite, no una casualidad. Así viene la tienda del más barato.
+    env.DB.prepare(
+      `SELECT c.id AS condition_id, c.slug, c.name_es, c.name_en, c.name_ja, c.grade,
+              MIN(lp.price) AS price, lp.shop_id, lp.url, lp.seen_on
+       FROM latest_prices lp
+       JOIN conditions c ON c.id = lp.condition_id
+       WHERE lp.product_id = ?1
+       GROUP BY c.id
+       ORDER BY c.grade DESC`
+    ).bind(item.product_id),
+  ]);
+
+  return {
+    ...item,
+    flag_ids: flags.results.map((r: any) => r.flag_id),
+    prices_by_condition: prices.results,
+  };
+}
+
+/**
+ * Campos que se pueden tocar desde la ficha, con su tipo. Lo que no esté aquí
+ * se ignora: el cuerpo de la petición no decide qué columnas existen.
+ */
+const ITEM_FIELDS: Record<string, 'int' | 'text'> = {
+  category_id: 'int',
+  status_id: 'int',
+  condition_id: 'int',
+  paid_price: 'int',
+  paid_on: 'text',
+  paid_shop_id: 'int',
+  sold_price: 'int',
+  sold_on: 'text',
+  target_price: 'int',
+  note: 'text',
+};
+
+/**
+ * El SET se construye solo con las claves presentes. No sirve COALESCE(?, col)
+ * como en /api/me: con eso nunca se podría BORRAR un precio objetivo, y quitar
+ * un objetivo tiene que ser posible.
+ */
+async function patchItem(userId: string, itemId: string, body: any, env: Env) {
+  const owns = await env.DB.prepare(`SELECT id FROM user_items WHERE id = ?1 AND user_id = ?2`)
+    .bind(itemId, userId)
+    .first<{ id: number }>();
+  if (!owns) return null;
+
+  const sets: string[] = [];
+  const values: (number | string | null)[] = [];
+
+  for (const [key, kind] of Object.entries(ITEM_FIELDS)) {
+    if (!(key in body)) continue;
+    const raw = body[key];
+
+    if (raw === null || raw === '') {
+      sets.push(`${key} = ?${values.length + 1}`);
+      values.push(null);
+      continue;
+    }
+
+    if (kind === 'int') {
+      const n = Math.trunc(Number(raw));
+      if (!Number.isFinite(n)) return { error: `${key} no es un número` };
+      sets.push(`${key} = ?${values.length + 1}`);
+      values.push(n);
+    } else {
+      sets.push(`${key} = ?${values.length + 1}`);
+      values.push(String(raw));
+    }
+  }
+
+  const statements: D1PreparedStatement[] = [];
+
+  if (sets.length > 0) {
+    statements.push(
+      env.DB.prepare(
+        `UPDATE user_items SET ${sets.join(', ')}
+         WHERE id = ?${values.length + 1} AND user_id = ?${values.length + 2}`
+      ).bind(...values, itemId, userId)
+    );
+  }
+
+  // Los defectos llegan como lista completa: se sustituyen, no se acumulan.
+  if (Array.isArray(body.flag_ids)) {
+    statements.push(
+      env.DB.prepare(`DELETE FROM user_item_flags WHERE user_item_id = ?1`).bind(owns.id)
+    );
+    const insert = env.DB.prepare(
+      `INSERT OR IGNORE INTO user_item_flags (user_item_id, flag_id) VALUES (?1, ?2)`
+    );
+    for (const flagId of body.flag_ids) {
+      statements.push(insert.bind(owns.id, Math.trunc(Number(flagId))));
+    }
+  }
+
+  // D1 no tiene BEGIN/COMMIT: batch() es lo que da atomicidad.
+  if (statements.length > 0) await env.DB.batch(statements);
+
+  return getItem(userId, itemId, env);
+}
+
+async function deleteItem(userId: string, itemId: string, env: Env) {
+  const res = await env.DB.prepare(`DELETE FROM user_items WHERE id = ?1 AND user_id = ?2`)
+    .bind(itemId, userId)
+    .run();
+
+  // Las flags y el historial de avisos se van solos por ON DELETE CASCADE.
+  // Los price_points NO: son del catálogo común y le sirven al siguiente.
+  return res.meta.changes > 0 ? { ok: true } : null;
+}
+
+/**
+ * Pantalla de alertas: lo que ya avisó el cron, y lo que está vigilando ahora.
+ * `track_price` sale de la tabla de estados, nunca de comparar slugs.
+ */
+async function listAlerts(userId: string, env: Env) {
+  const [recent, watching] = await env.DB.batch<any>([
+    env.DB.prepare(
+      `SELECT al.id, al.price, al.notified_at, s.slug AS shop,
+              ui.id AS item_id, ui.target_price, ui.condition_id,
+              p.name, p.image_url
+       FROM alert_log al
+       JOIN user_items ui ON ui.id = al.user_item_id
+       JOIN products p    ON p.id = ui.product_id
+       JOIN shops s       ON s.id = al.shop_id
+       WHERE ui.user_id = ?1
+       ORDER BY al.notified_at DESC
+       LIMIT 50`
+    ).bind(userId),
+    env.DB.prepare(
+      `SELECT ui.id, ui.target_price, ui.condition_id, ui.status_id,
+              p.name, p.image_url,
+              (SELECT MIN(lp.price) FROM latest_prices lp
+                WHERE lp.product_id = ui.product_id AND lp.condition_id = ui.condition_id) AS best_price,
+              (SELECT MIN(lp.price) FROM latest_prices lp
+                JOIN conditions c ON c.id = lp.condition_id
+                WHERE lp.product_id = ui.product_id
+                  AND c.owner_id IS NULL AND c.slug = 'new') AS retail_price
+       FROM user_items ui
+       JOIN products p  ON p.id = ui.product_id
+       JOIN statuses st ON st.id = ui.status_id
+       WHERE ui.user_id = ?1 AND st.track_price = 1
+       ORDER BY ui.target_price IS NULL, ui.created_at DESC`
+    ).bind(userId),
+  ]);
+
+  return { recent: recent.results, watching: watching.results };
+}
+
+// ---- passkeys: listarlas y revocarlas desde Ajustes -------------------------
+
+async function listCredentials(userId: string, env: Env) {
+  const { results } = await env.DB.prepare(
+    `SELECT id, device_name, transports, created_at, last_used_at
+     FROM credentials WHERE user_id = ?1 ORDER BY created_at DESC`
+  )
+    .bind(userId)
+    .all();
+  return results;
+}
+
+async function deleteCredential(userId: string, credentialId: string, env: Env) {
+  // Borrar la última passkey deja la cuenta inaccesible para siempre: no hay
+  // contraseña de reserva ni forma de recuperarla.
+  const count = await env.DB.prepare(`SELECT COUNT(*) AS n FROM credentials WHERE user_id = ?1`)
+    .bind(userId)
+    .first<{ n: number }>();
+  if ((count?.n ?? 0) <= 1) return { error: 'es la única passkey de la cuenta' };
+
+  const res = await env.DB.prepare(`DELETE FROM credentials WHERE id = ?1 AND user_id = ?2`)
+    .bind(credentialId, userId)
+    .run();
+  return res.meta.changes > 0 ? { ok: true } : null;
+}
+
 // ---------------------------------------------------------------- entrada
 
 export default {
@@ -338,19 +549,66 @@ export default {
 
       if (request.method === 'GET' && path === '/api/me') {
         return json(
-          await env.DB.prepare(`SELECT id, email, lang, currency FROM users WHERE id = ?1`)
+          await env.DB.prepare(`SELECT id, email, lang, currency, webhook_url FROM users WHERE id = ?1`)
             .bind(userId)
             .first()
         );
       }
 
       if (request.method === 'PATCH' && path === '/api/me') {
-        const body = (await request.json()) as { lang?: string; currency?: string };
+        const body = (await request.json()) as {
+          lang?: string;
+          currency?: string;
+          webhook_url?: string | null;
+        };
+
+        // lang y currency llevan CHECK en el esquema: validarlos aquí devuelve
+        // un 400 claro en vez de un 500 con el error de SQLite dentro.
+        if (body.lang && !['es', 'en', 'ja'].includes(body.lang)) {
+          return json({ error: 'idioma no válido' }, 400);
+        }
+        if (body.currency && !['JPY', 'EUR'].includes(body.currency)) {
+          return json({ error: 'moneda no válida' }, 400);
+        }
+
+        // El cron hace POST a esta URL sin mirarla. Exigir https y descartar
+        // lo que no sea una URL evita guardar ahí cualquier cosa por descuido.
+        // Cadena vacía = quitar el webhook; ausente = no tocarlo.
+        let webhook: string | null | undefined;
+        if ('webhook_url' in body) {
+          const raw = (body.webhook_url ?? '').trim();
+          if (raw === '') {
+            webhook = null;
+          } else {
+            let parsed: URL;
+            try {
+              parsed = new URL(raw);
+            } catch {
+              return json({ error: 'webhook no válido' }, 400);
+            }
+            if (parsed.protocol !== 'https:') {
+              return json({ error: 'el webhook debe ser https' }, 400);
+            }
+            webhook = parsed.toString();
+          }
+        }
+
         await env.DB.prepare(
-          `UPDATE users SET lang = COALESCE(?2, lang), currency = COALESCE(?3, currency) WHERE id = ?1`
+          `UPDATE users SET
+             lang        = COALESCE(?2, lang),
+             currency    = COALESCE(?3, currency),
+             webhook_url = CASE WHEN ?5 = 1 THEN ?4 ELSE webhook_url END
+           WHERE id = ?1`
         )
-          .bind(userId, body.lang ?? null, body.currency ?? null)
+          .bind(
+            userId,
+            body.lang ?? null,
+            body.currency ?? null,
+            webhook ?? null,
+            webhook === undefined ? 0 : 1
+          )
           .run();
+
         return json({ ok: true });
       }
 
@@ -388,6 +646,41 @@ export default {
       if (request.method === 'GET' && path.startsWith('/api/photo/')) {
         const res = await getPhoto(userId, decodeURIComponent(path.slice('/api/photo/'.length)), env);
         return res ?? json({ error: 'no encontrado' }, 404);
+      }
+
+      // Ficha: leer, editar y borrar. Las tres comprueban el dueño dentro.
+      const one = path.match(/^\/api\/items\/(\d+)$/);
+      if (one) {
+        if (request.method === 'GET') {
+          const found = await getItem(userId, one[1], env);
+          return found ? json(found) : json({ error: 'no encontrado' }, 404);
+        }
+        if (request.method === 'PATCH') {
+          const done = await patchItem(userId, one[1], await request.json(), env);
+          if (!done) return json({ error: 'no encontrado' }, 404);
+          return done.error ? json(done, 400) : json(done);
+        }
+        if (request.method === 'DELETE') {
+          const done = await deleteItem(userId, one[1], env);
+          return done ? json(done) : json({ error: 'no encontrado' }, 404);
+        }
+      }
+
+      if (request.method === 'GET' && path === '/api/alerts') {
+        return json(await listAlerts(userId, env));
+      }
+
+      if (request.method === 'GET' && path === '/api/credentials') {
+        return json(await listCredentials(userId, env));
+      }
+
+      // El id de una credencial es base64url, no un número: no vale \d+.
+      const credential = path.match(/^\/api\/credentials\/([A-Za-z0-9_%-]+)$/);
+      if (request.method === 'DELETE' && credential) {
+        const done = await deleteCredential(userId, decodeURIComponent(credential[1]), env);
+        if (!done) return json({ error: 'no encontrado' }, 404);
+        // 409: la credencial existe, pero es la última y dejaría fuera al dueño.
+        return done.error ? json(done, 409) : json(done);
       }
 
       return json({ error: 'ruta desconocida' }, 404);

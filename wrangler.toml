@@ -4,10 +4,16 @@ compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
 
 # La PWA compilada se sirve como estáticos desde el mismo Worker.
-# Las rutas /api/* no existen como fichero, así que caen al Worker.
+#
+# Con not_found_handling = "single-page-application", una petición de navegación
+# (la que lleva Sec-Fetch-Mode: navigate) que no case con un fichero devuelve
+# index.html SIN pasar por el Worker. Las llamadas por fetch() sí llegan, así
+# que la app funcionaría igual, pero abrir /api/... en el navegador serviría la
+# PWA en vez de la API. run_worker_first lo deja explícito.
 [assets]
 directory = "./dist"
 not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
 
 [triggers]
 crons = ["0 21 * * *"]   # 06:00 JST
@@ -15,7 +21,7 @@ crons = ["0 21 * * *"]   # 06:00 JST
 [[d1_databases]]
 binding = "DB"
 database_name = "nefuda"
-database_id = "<id que devuelve: npx wrangler d1 create nefuda>"
+database_id = "2e450cbd-a308-46cb-aad5-76fa239a5f11"
 
 [[r2_buckets]]
 binding = "FOTOS"
