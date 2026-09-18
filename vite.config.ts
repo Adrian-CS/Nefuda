@@ -20,6 +20,9 @@ export default defineConfig({
         icons: [
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+          // El fondo va a sangre y el dibujo cabe dentro del círculo seguro del
+          // 80%, así que Android puede recortarlo con su forma sin comerse nada.
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {
