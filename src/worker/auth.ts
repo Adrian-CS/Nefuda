@@ -47,9 +47,32 @@ const secret = (env: AuthEnv) => new TextEncoder().encode(env.SESSION_SECRET);
  * código vale en local, en workers.dev y en un dominio propio si algún día lo
  * compras. OJO: las passkeys quedan atadas al rpID. Si cambias de dominio, hay
  * que volver a registrarlas.
+ *
+ * En desarrollo hay un matiz: Vite hace de proxy hacia el Worker y reescribe la
+ * cabecera Host a 127.0.0.1:8787, así que la URL de la petición deja de decir
+ * desde dónde navega la persona. WebAuthn exige que rpID y origin coincidan con
+ * la página, y ademas una IP no vale como rpID, con lo que el navegador
+ * rechazaría la passkey con «invalid domain».
+ *
+ * Por eso se mira la cabecera Origin, que sí trae la página real. Se confía en
+ * ella SOLO si apunta a localhost: en producción no hay proxy, el Host es el
+ * bueno, y así nadie puede colar un rpID ajeno mandando una cabecera a mano.
  */
 function rp(request: Request) {
   const url = new URL(request.url);
+
+  const sent = request.headers.get('origin');
+  if (sent) {
+    try {
+      const browser = new URL(sent);
+      if (browser.hostname === 'localhost') {
+        return { rpID: browser.hostname, origin: browser.origin };
+      }
+    } catch {
+      // Cabecera inservible: se ignora y manda el Host.
+    }
+  }
+
   return { rpID: url.hostname, origin: url.origin };
 }
 
@@ -139,6 +162,19 @@ export async function handleAuth(request: Request, env: AuthEnv): Promise<Respon
   const path = new URL(request.url).pathname;
   if (!path.startsWith('/api/auth/')) return null;
   const { rpID, origin } = rp(request);
+
+  // WebAuthn exige un DOMINIO como rpID: una IP no vale, aunque el origen sea
+  // seguro. Con rp() esto ya no debería pasar navegando por localhost; queda
+  // como red por si se entra directo por IP, porque el navegador solo dice
+  // "invalid domain" y no explica qué hacer.
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(rpID) || rpID.includes(':')) {
+    return json(
+      {
+        error: `las passkeys necesitan un dominio, no una IP (${rpID}). Abre la app en localhost o en el dominio desplegado`,
+      },
+      400
+    );
+  }
 
   // ---- alta de una passkey nueva -----------------------------------------
   if (path === '/api/auth/register/options' && request.method === 'POST') {
