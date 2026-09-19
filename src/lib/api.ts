@@ -92,7 +92,8 @@ export interface Product {
 
 export interface LookupResult {
   product: Product;
-  prices: { shop: string; price: number; url: string | null }[];
+  /** `condition` separa «nuevo en tienda» de «segunda mano»: nunca se funden. */
+  prices: { shop: string; condition: string; price: number; url: string | null }[];
 }
 
 export interface Me {

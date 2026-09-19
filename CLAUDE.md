@@ -36,8 +36,9 @@ Un único Worker sirve la PWA (estáticos) y la API. Un solo `wrangler deploy`.
 Navegador  --passkey-->  Worker  ->  D1 (datos)
                           |          R2 (fotos propias)
                           |
-                          +-> Yahoo!ショッピング API  (búsqueda por JAN)
-                          +-> 楽天市場 API           (segunda opinión de precio)
+                          +-> Yahoo!ショッピング API  (búsqueda por JAN, nuevo)
+                          +-> 楽天市場 API           (nuevo + 駿河屋 y ブックオフ,
+                          |                           que son segunda mano)
                           +-> Cron diario 06:00 JST  (precios + alertas)
 ```
 
@@ -92,11 +93,24 @@ de tener los estados en tabla.
 
 ## Precios: nuevo y segunda mano no son lo mismo
 
-Las APIs de Yahoo y Rakuten devuelven precio de **tienda, producto nuevo**. Mercari es
-C2C y de segunda mano, y **no tiene API pública** para consultar precios de terceros (la
-メルカリShops API es para que un vendedor gestione su propio inventario). Su scraping está
-prohibido. Por eso Mercari existe en `shops` con `is_api = 0` y solo entra a mano, desde
+Yahoo devuelve precio de **tienda, producto nuevo**. Mercari es C2C y de segunda mano, y
+**no tiene API pública** para consultar precios de terceros (la メルカリShops API es para
+que un vendedor gestione su propio inventario). Su scraping está prohibido. Por eso
+Mercari existe en `shops` con `is_api = 0` y solo entra a mano, desde
 `POST /api/items/:id/price`.
+
+**La segunda mano automática sale de 駿河屋 y ブックオフ**, que tienen escaparate oficial
+en 楽天市場 y por tanto se consultan por la API de Rakuten, sin rascar sus webs (que ambas
+prohíben). Detalles que importan:
+
+- Es **una sola llamada a Rakuten**, con `hits=30` en vez de 5: los resultados se reparten
+  por `shopCode`. Hacer una llamada por tienda gastaría subrequests y huecos del límite de
+  1 req/s sin necesidad.
+- Las dos venden nuevo **y** usado, así que la tienda no basta para saber el grado: lo dice
+  el título. `USED_MARKER` lo decide, y **un anuncio sin marca no se guarda en ningún
+  grado**. Antes sin precio que con el precio equivocado.
+- Son tiendas, no C2C: sus precios van por encima de lo que se cierra en Mercari. Es
+  «segunda mano en tienda», no «lo que vale en Mercari».
 
 De ahí una regla de producto: **comparar tu ejemplar usado contra el precio nuevo de
 tienda infla el valor y miente.** El código ya lo respeta:
@@ -105,7 +119,10 @@ tienda infla el valor y miente.** El código ya lo respeta:
   y devuelve `retail_price` aparte.
 - Si no hay precio de ese grado, se cae a lo que pagaste en vez de inventar un número.
 - En la ficha hay que mostrar **dos líneas separadas**, «nuevo en tienda» y «segunda
-  mano», nunca un único «ahora vale».
+  mano», nunca un único «ahora vale». La hoja del escáner hace lo mismo.
+- El cron avisa contra el **grado del ejemplar de cada quien**: calcula el mínimo por grado
+  y filtra por `ui.condition_id`. Sin eso, una figura nueva barata dispararía el aviso de
+  quien tiene la suya usada.
 
 ---
 
@@ -181,6 +198,11 @@ iOS hace zoom al enfocarlos.
 - **Verificar los nombres de campo de las dos APIs** contra la documentación vigente antes
   de fiarse. Están escritos según la forma habitual de sus respuestas, pero ambas han
   cambiado de estructura entre versiones y fallan en silencio.
+- **Los `shopCode` de 駿河屋 (`surugaya-a-too`) y ブックオフ (`bookoffonline`) y el campo
+  `shopCode` de la respuesta de Rakuten están sin verificar contra una llamada real.**
+  Igual que el resto de campos de las dos APIs: comprobarlos antes de fiarse. Si el
+  `shopCode` no llega o el título no marca el grado, la línea de segunda mano sale vacía
+  en silencio, que es el modo de fallo que este proyecto ya ha visto.
 - **Yahoo limita a 1 consulta por segundo** (y 50.000 al día por App ID). El cron duerme
   1,1 s entre productos. No quitar esa pausa.
 - **El App ID de Yahoo no puede exponerse.** Las llamadas salen del Worker, nunca del

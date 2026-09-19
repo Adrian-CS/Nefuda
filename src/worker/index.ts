@@ -17,7 +17,9 @@ export interface Env extends AuthEnv {
 }
 
 interface ShopPrice {
-  shopSlug: 'yahoo' | 'rakuten';
+  shopSlug: string;
+  /** El grado ya no se da por supuesto: 駿河屋 y ブックオフ venden de segunda mano. */
+  conditionSlug: 'new' | 'used';
   price: number;
   url: string | null;
   image: string | null;
@@ -25,6 +27,25 @@ interface ShopPrice {
   maker: string | null;
   category: string | null;
 }
+
+/**
+ * Tiendas de segunda mano con escaparate oficial en 楽天市場. Se consultan por
+ * la API de Rakuten, NO rascando su web: 駿河屋 lo prohíbe en sus términos, y
+ * aquí no hace falta, porque su tienda de Rakuten entra por la vía oficial.
+ *
+ * `code` es el shopCode de Rakuten: el trozo de rakuten.co.jp/<code>/.
+ */
+const USED_SHOPS: ReadonlyArray<{ code: string; slug: string }> = [
+  { code: 'surugaya-a-too', slug: 'surugaya' },
+  { code: 'bookoffonline', slug: 'bookoff' },
+];
+
+/**
+ * Las dos venden nuevo Y usado, así que la tienda por sí sola no dice el grado:
+ * lo dice el título del anuncio. Si un anuncio no lleva marca no se guarda, ni
+ * como nuevo ni como usado. Antes sin precio que con el precio de otro grado.
+ */
+const USED_MARKER = /中古|ユーズド|\bused\b/i;
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 
@@ -89,6 +110,7 @@ async function yahooByJan(jan: string, env: Env): Promise<ShopPrice | null> {
 
   return {
     shopSlug: 'yahoo',
+    conditionSlug: 'new',
     price: Number(hit.price),
     url: hit.url ?? null,
     image: hit.image?.medium ?? hit.image?.small ?? null,
@@ -98,35 +120,78 @@ async function yahooByJan(jan: string, env: Env): Promise<ShopPrice | null> {
   };
 }
 
-async function rakutenByJan(jan: string, env: Env): Promise<ShopPrice | null> {
+/**
+ * Rakuten devuelve VARIOS precios: el de tienda nueva y el de las tiendas de
+ * segunda mano que tienen escaparate en 楽天市場.
+ *
+ * Se piden 30 resultados (el máximo) en vez de 5 y se reparten por tienda, en
+ * lugar de hacer una llamada por tienda. Así esto no gasta ni una subrequest
+ * más ni otro hueco del límite de una consulta por segundo, que en el plan
+ * gratuito de Workers es lo que acaba poniendo el techo.
+ */
+async function rakutenByJan(jan: string, env: Env): Promise<ShopPrice[]> {
   // Rakuten no filtra por JAN, pero buscarlo como palabra clave funciona bien.
   const url =
     `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601` +
-    `?applicationId=${env.RAKUTEN_APP_ID}&keyword=${encodeURIComponent(jan)}&hits=5&sort=%2BitemPrice`;
+    `?applicationId=${env.RAKUTEN_APP_ID}&keyword=${encodeURIComponent(jan)}&hits=30&sort=%2BitemPrice`;
 
   const res = await fetch(url, { cf: { cacheTtl: 900, cacheEverything: true } });
-  if (!res.ok) return null;
+  if (!res.ok) return [];
 
-  const raw = ((await res.json()) as any)?.Items?.[0];
-  const hit = raw?.Item ?? raw;
-  if (!hit) return null;
+  const items = ((await res.json()) as any)?.Items ?? [];
+  const found: ShopPrice[] = [];
+  const seen = new Set<string>();
 
-  return {
-    shopSlug: 'rakuten',
-    price: Number(hit.itemPrice),
-    url: hit.itemUrl ?? null,
-    image: hit.mediumImageUrls?.[0]?.imageUrl ?? null,
-    name: hit.itemName ?? '',
-    maker: hit.shopName ?? null,
-    category: null,
-  };
+  // Vienen ordenados por precio ascendente, así que el primero de cada tienda
+  // ya es el más barato de esa tienda: con quedarse con ese basta.
+  for (const raw of items) {
+    const hit = raw?.Item ?? raw;
+    const price = Number(hit?.itemPrice);
+    if (!hit || !Number.isFinite(price) || price <= 0) continue;
+
+    const name = String(hit.itemName ?? '');
+    const used = USED_MARKER.test(name);
+    const usedShop = USED_SHOPS.find((s) => s.code === hit.shopCode);
+
+    // Tienda de segunda mano: solo cuenta si el título lo confirma. Cualquier
+    // otra: solo cuenta como nueva si el título no lo desmiente. Lo que no se
+    // puede clasificar se tira, que es mejor que colocarlo en el grado que no es.
+    let slug: string;
+    if (usedShop) {
+      if (!used) continue;
+      slug = usedShop.slug;
+    } else {
+      if (used) continue;
+      slug = 'rakuten';
+    }
+
+    if (seen.has(slug)) continue;
+    seen.add(slug);
+
+    found.push({
+      shopSlug: slug,
+      conditionSlug: used ? 'used' : 'new',
+      price,
+      url: hit.itemUrl ?? null,
+      image: hit.mediumImageUrls?.[0]?.imageUrl ?? null,
+      name,
+      // En los de segunda mano el título va lleno de 【中古】 y marcas de estado,
+      // y shopName es la tienda, no el fabricante: no sirve para nombrar la ficha.
+      maker: usedShop ? null : (hit.shopName ?? null),
+      category: null,
+    });
+  }
+
+  return found;
 }
 
-/** Los precios de API son siempre de producto nuevo: condición 'new'. */
+/**
+ * El grado lo trae cada precio. Ya no vale darlo por 'new': 駿河屋 y ブックオフ
+ * entran por la API de Rakuten y lo que mandan es segunda mano.
+ */
 async function savePrices(env: Env, productId: number, prices: ShopPrice[]) {
   if (prices.length === 0) return;
   const map = await slugs(env.DB);
-  const conditionId = map.conditions.get('new')!;
   const day = today();
 
   const stmt = env.DB.prepare(
@@ -136,18 +201,30 @@ async function savePrices(env: Env, productId: number, prices: ShopPrice[]) {
      DO UPDATE SET price = excluded.price, url = excluded.url`
   );
 
-  await env.DB.batch(
-    prices
-      .filter((p) => map.shops.has(p.shopSlug))
-      .map((p) => stmt.bind(productId, map.shops.get(p.shopSlug)!, conditionId, p.price, p.url, day))
-  );
+  // Una tienda o un grado que no esté en su tabla se descarta: es preferible
+  // perder ese precio a plantarlo con el id de otra cosa.
+  const rows = prices
+    .filter((p) => map.shops.has(p.shopSlug) && map.conditions.has(p.conditionSlug))
+    .map((p) =>
+      stmt.bind(
+        productId,
+        map.shops.get(p.shopSlug)!,
+        map.conditions.get(p.conditionSlug)!,
+        p.price,
+        p.url,
+        day
+      )
+    );
+
+  // batch([]) revienta: sin filas, no hay nada que escribir.
+  if (rows.length > 0) await env.DB.batch(rows);
 }
 
 // ---------------------------------------------------------------- rutas
 
 async function lookupJan(jan: string, env: Env) {
   const [yahoo, rakuten] = await Promise.all([yahooByJan(jan, env), rakutenByJan(jan, env)]);
-  const found = [yahoo, rakuten].filter((p): p is ShopPrice => p !== null);
+  const found = [...(yahoo ? [yahoo] : []), ...rakuten];
 
   let product = await env.DB.prepare(
     `SELECT id, jan, name, maker, api_category, image_url FROM products WHERE jan = ?1`
@@ -157,7 +234,9 @@ async function lookupJan(jan: string, env: Env) {
 
   if (!product) {
     if (found.length === 0) return null;
-    const best = found[0];
+    // La ficha se nombra desde un anuncio NUEVO: los de segunda mano llevan el
+    // título lleno de 【中古】 y de marcas de estado, y eso no es el producto.
+    const best = found.find((p) => p.conditionSlug === 'new') ?? found[0];
     product = await env.DB.prepare(
       `INSERT INTO products (jan, name, maker, api_category, image_url) VALUES (?1, ?2, ?3, ?4, ?5)
        ON CONFLICT (jan) DO UPDATE SET name = excluded.name
@@ -171,8 +250,10 @@ async function lookupJan(jan: string, env: Env) {
 
   return {
     product,
+    // El grado viaja con cada precio: la pantalla pinta «nuevo en tienda» y
+    // «segunda mano» en líneas distintas sin tener que adivinar cuál es cuál.
     prices: found
-      .map((p) => ({ shop: p.shopSlug, price: p.price, url: p.url }))
+      .map((p) => ({ shop: p.shopSlug, condition: p.conditionSlug, price: p.price, url: p.url }))
       .sort((a, b) => a.price - b.price),
   };
 }
@@ -759,47 +840,67 @@ export default {
             yahooByJan(product.jan, env),
             rakutenByJan(product.jan, env),
           ]);
-          const found = [yahoo, rakuten].filter((p): p is ShopPrice => p !== null);
+          // Se filtra aquí y no solo dentro de savePrices porque el aviso hace
+          // map.shops.get(slug)! sin red: una tienda que no esté en la tabla
+          // (esquema sin actualizar) sería un bind con undefined.
+          const found = [...(yahoo ? [yahoo] : []), ...rakuten].filter(
+            (p) => map.shops.has(p.shopSlug) && map.conditions.has(p.conditionSlug)
+          );
 
           if (found.length > 0) {
             await savePrices(env, product.id, found);
-            const best = found.reduce((a, b) => (a.price <= b.price ? a : b));
 
-            // Objetivos por encima de este precio, sin aviso reciente.
-            const { results: hits } = await env.DB.prepare(
-              `SELECT ui.id, u.webhook_url
-               FROM user_items ui
-               JOIN users u     ON u.id = ui.user_id
-               JOIN statuses st ON st.id = ui.status_id
-               WHERE ui.product_id = ?1
-                 AND st.track_price = 1
-                 AND ui.target_price IS NOT NULL
-                 AND ui.target_price >= ?2
-                 AND NOT EXISTS (
-                   SELECT 1 FROM alert_log al
-                   WHERE al.user_item_id = ui.id
-                     AND al.price <= ?2
-                     AND al.notified_at > datetime('now', '-14 days')
-                 )`
-            )
-              .bind(product.id, best.price)
-              .all<{ id: number; webhook_url: string | null }>();
+            // El más barato DE CADA GRADO, no el más barato a secas. Mezclarlos
+            // avisaría de que tu figura usada ha bajado porque hay una nueva
+            // barata en tienda: justo la comparación que este proyecto evita.
+            const bestByCondition = new Map<string, ShopPrice>();
+            for (const p of found) {
+              const prev = bestByCondition.get(p.conditionSlug);
+              if (!prev || p.price < prev.price) bestByCondition.set(p.conditionSlug, p);
+            }
 
-            for (const hit of hits) {
-              if (hit.webhook_url) {
-                await fetch(hit.webhook_url, {
-                  method: 'POST',
-                  headers: JSON_HEADERS,
-                  body: JSON.stringify({
-                    content: `${product.name} — ¥${best.price.toLocaleString('ja-JP')} (${best.shopSlug})\n${best.url ?? ''}`,
-                  }),
-                }).catch(() => {});
-              }
-              await env.DB.prepare(
-                `INSERT INTO alert_log (user_item_id, price, shop_id) VALUES (?1, ?2, ?3)`
+            for (const [conditionSlug, best] of bestByCondition) {
+              const conditionId = map.conditions.get(conditionSlug);
+              if (conditionId === undefined) continue;
+
+              // Objetivos por encima de este precio, sin aviso reciente, y solo
+              // de quien tenga un ejemplar DE ESTE grado.
+              const { results: hits } = await env.DB.prepare(
+                `SELECT ui.id, u.webhook_url
+                 FROM user_items ui
+                 JOIN users u     ON u.id = ui.user_id
+                 JOIN statuses st ON st.id = ui.status_id
+                 WHERE ui.product_id = ?1
+                   AND st.track_price = 1
+                   AND ui.condition_id = ?3
+                   AND ui.target_price IS NOT NULL
+                   AND ui.target_price >= ?2
+                   AND NOT EXISTS (
+                     SELECT 1 FROM alert_log al
+                     WHERE al.user_item_id = ui.id
+                       AND al.price <= ?2
+                       AND al.notified_at > datetime('now', '-14 days')
+                   )`
               )
-                .bind(hit.id, best.price, map.shops.get(best.shopSlug)!)
-                .run();
+                .bind(product.id, best.price, conditionId)
+                .all<{ id: number; webhook_url: string | null }>();
+
+              for (const hit of hits) {
+                if (hit.webhook_url) {
+                  await fetch(hit.webhook_url, {
+                    method: 'POST',
+                    headers: JSON_HEADERS,
+                    body: JSON.stringify({
+                      content: `${product.name} — ¥${best.price.toLocaleString('ja-JP')} (${best.shopSlug})\n${best.url ?? ''}`,
+                    }),
+                  }).catch(() => {});
+                }
+                await env.DB.prepare(
+                  `INSERT INTO alert_log (user_item_id, price, shop_id) VALUES (?1, ?2, ?3)`
+                )
+                  .bind(hit.id, best.price, map.shops.get(best.shopSlug)!)
+                  .run();
+              }
             }
           }
 

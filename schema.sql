@@ -140,9 +140,17 @@ INSERT OR IGNORE INTO shops (slug, name, aliases, kind, is_api) VALUES
   -- Mercari es C2C y no tiene API pública para consultar precios ajenos, y su
   -- scraping está prohibido: is_api = 0 y los precios entran a mano desde la ficha.
   ('mercari',  'メルカリ',           '["Mercari"]',                'online',   0),
-  ('surugaya', '駿河屋',             '["Suruga-ya","surugaya"]',   'online',   0),
+  -- 駿河屋 y ブックオフ tienen tienda oficial en 楽天市場, así que sus precios de
+  -- segunda mano entran por la API de Rakuten, sin rascar sus webs (que ambas
+  -- prohíben). Por eso is_api = 1: el cron sí los consulta, vía Rakuten.
+  ('surugaya', '駿河屋',             '["Suruga-ya","surugaya"]',   'online',   1),
+  ('bookoff',  'ブックオフ',          '["BookOff","Book Off"]',     'online',   1),
   ('mandarake','まんだらけ',          '["Mandarake"]',              'online',   0),
   ('store',    'Tienda física',      NULL,                         'physical', 0);
+
+-- INSERT OR IGNORE no toca las filas que ya existen, y 駿河屋 ya estaba con
+-- is_api = 0. Sobre una base ya creada hace falta este UPDATE aparte.
+UPDATE shops SET is_api = 1 WHERE slug IN ('surugaya', 'bookoff');
 
 -- ---------------------------------------------------------------- catálogo
 

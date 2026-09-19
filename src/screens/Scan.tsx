@@ -193,6 +193,13 @@ export default function Scan() {
 
   const cameraDown = state === 'denied' || state === 'unsupported';
 
+  // Los precios llegan ya ordenados de más barato a más caro, así que el primero
+  // de cada grupo es el mínimo de su grado. Se reparten aquí y NO se mezclan:
+  // el más barato del conjunto suele ser el de segunda mano, y enseñarlo como
+  // «nuevo en tienda» sería exactamente la mentira que este proyecto evita.
+  const newPrices = hit?.prices.filter((p) => p.condition === 'new') ?? [];
+  const usedPrices = hit?.prices.filter((p) => p.condition === 'used') ?? [];
+
   return (
     <div className="screen screen--scan">
       <header className="header">
@@ -337,17 +344,33 @@ export default function Scan() {
                   </label>
                 </div>
 
-                {/* Yahoo y Rakuten devuelven precio de tienda, producto nuevo.
-                    Se etiqueta como tal: nunca como «ahora vale». */}
+                {/* Dos líneas, siempre las dos, aunque una esté vacía: Yahoo y
+                    Rakuten dan precio de tienda nueva; 駿河屋 y ブックオフ, de
+                    segunda mano. Nunca un único «ahora vale». */}
                 <div className="price-line">
                   <span className="price-line-label">{t.newInShop}</span>
-                  {hit.prices.length > 0 ? (
-                    <span className="price-line-value">{yen(hit.prices[0].price, lang)}</span>
+                  {newPrices.length > 0 ? (
+                    <span className="price-line-value">{yen(newPrices[0].price, lang)}</span>
                   ) : (
                     <span className="price-line-value price-line-value--none">{t.noPrice}</span>
                   )}
                 </div>
-                {hit.prices.slice(1).map((p) => (
+                {newPrices.slice(1).map((p) => (
+                  <div className="price-line price-line--sub" key={p.shop}>
+                    <span className="price-line-label">{p.shop}</span>
+                    <span className="price-line-value">{yen(p.price, lang)}</span>
+                  </div>
+                ))}
+
+                <div className="price-line">
+                  <span className="price-line-label">{t.secondHand}</span>
+                  {usedPrices.length > 0 ? (
+                    <span className="price-line-value">{yen(usedPrices[0].price, lang)}</span>
+                  ) : (
+                    <span className="price-line-value price-line-value--none">{t.noPrice}</span>
+                  )}
+                </div>
+                {usedPrices.slice(1).map((p) => (
                   <div className="price-line price-line--sub" key={p.shop}>
                     <span className="price-line-label">{p.shop}</span>
                     <span className="price-line-value">{yen(p.price, lang)}</span>
