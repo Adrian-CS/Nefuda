@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { api, type LookupResult, type Vocab } from '../lib/api';
+import { isPriceBarcode } from '../lib/jan';
 import { useI18n, yen } from '../i18n';
 import { label } from './Collection';
 import { useScanner } from '../hooks/useScanner';
@@ -25,6 +26,9 @@ export default function Scan() {
   const [typed, setTyped] = useState('');
   const [busy, setBusy] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  // El código de abajo del manga. No abre la hoja: es un aviso al pie del
+  // visor, para que baste con subir el móvil al de arriba sin tocar nada.
+  const [priceBarcode, setPriceBarcode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -54,8 +58,16 @@ export default function Scan() {
    */
   const lookup = useCallback(async (code: string) => {
     if (looking.current) return;
-    looking.current = true;
 
+    // Consultarlo solo puede dar 404, así que no se consulta. La cámara sigue
+    // encendida a propósito: el bueno está justo encima, en la misma contra.
+    if (isPriceBarcode(code)) {
+      setPriceBarcode(true);
+      return;
+    }
+
+    looking.current = true;
+    setPriceBarcode(false);
     setJan(code);
     setBusy(true);
     setNotFound(false);
@@ -125,6 +137,7 @@ export default function Scan() {
     setPaid('');
     setTarget('');
     setByHand(false);
+    setPriceBarcode(false);
     setManualName('');
     setManualMaker('');
     setPhoto(null);
@@ -221,6 +234,8 @@ export default function Scan() {
           {state !== 'scanning' && <p className="viewfinder-status">{t.loading}</p>}
         </div>
       )}
+
+      {priceBarcode && <p className="hint hint--block">{t.priceBarcode}</p>}
 
       {/* Siempre disponible: códigos rotos, cajas sin código, o iOS sin permiso. */}
       <form

@@ -130,27 +130,27 @@ tienda infla el valor y miente.** El código ya lo respeta:
 
 Funciona de punta a punta: registro, login, alta por JAN, colección y cron.
 
+El código está entero: las cinco pantallas, el Worker, el esquema y los iconos. `npm run
+build` pasa y `wrangler deploy --dry-run` empaqueta bien. **Nada de esto se ha ejecutado
+contra las APIs reales todavía**, que es donde está el riesgo de verdad.
+
 | Zona | Estado |
 |---|---|
-| `schema.sql` | Completo (v3 + tabla `credentials`). Sin ejecutar todavía |
-| `src/worker/index.ts` | Completo, escrito contra el esquema actual |
-| `src/worker/auth.ts` | Completo |
-| `src/i18n.tsx`, `src/lib/api.ts`, `src/hooks/useScanner.ts` | Completos |
-| `src/screens/Login.tsx`, `Collection.tsx` | Completos, sirven de patrón |
-| `src/screens/Scan.tsx`, `Item.tsx`, `Alerts.tsx`, `Settings.tsx` | **Stubs vacíos** |
-| `src/styles.css` | Tokens y clases base; faltan las de las pantallas pendientes |
-| `public/icon-192.png`, `icon-512.png` | **Faltan** |
+| `schema.sql` | Completo. Hay que reejecutarlo: añade `bookoff` y pone `is_api = 1` en 駿河屋 |
+| `src/worker/index.ts`, `auth.ts` | Completos |
+| `src/i18n.tsx`, `src/lib/api.ts`, `src/lib/jan.ts`, `src/hooks/useScanner.ts` | Completos |
+| `src/screens/*.tsx` | Las cinco completas |
+| `src/styles.css` | Completo |
+| `public/icon-192.png`, `icon-512.png` | Hechos |
 
 ### Lo siguiente
 
-1. `Scan.tsx` — usa `useScanner`, llama a `/api/lookup`, muestra el resultado en una hoja
-   inferior con dos acciones: añadir o solo vigilar.
-2. `Item.tsx` — ficha con gráfica de histórico (SVG a mano, sin librería), las dos líneas
-   de precio, y el formulario de precio manual para anotar Mercari.
-3. `Alerts.tsx` — bajadas recientes y lista de vigilados.
-4. `Settings.tsx` — idioma, moneda, webhook de Discord, gestión de passkeys y el crédito
-   de atribución de Yahoo y Rakuten.
-5. Iconos PWA.
+1. **Conseguir el App ID de Rakuten y el de Yahoo.** Sin ellos no funciona ni la búsqueda
+   por JAN, que es el corazón de la app.
+2. **Verificar contra una llamada real** los nombres de campo de las dos APIs, los dos
+   `shopCode` y el marcador de 【中古】. Ver las trampas de aquí abajo.
+3. `npm run db:remote` y `npm run deploy`.
+4. Registrar una passkey en producción: la de `localhost` no vale allí, el `rpID` cambia.
 
 ---
 
@@ -207,6 +207,10 @@ iOS hace zoom al enfocarlos.
   1,1 s entre productos. No quitar esa pausa.
 - **El App ID de Yahoo no puede exponerse.** Las llamadas salen del Worker, nunca del
   navegador.
+- **Los libros japoneses llevan dos códigos de barras apilados**, y el lector agarra el
+  que pilla. El de arriba es el ISBN-13 (978…), que sirve; el de abajo empieza por 192 y
+  solo lleva género y precio. `isPriceBarcode` en `src/lib/jan.ts` lo descarta en el
+  escáner y en `/api/lookup`. Si algún día se admiten códigos que no sean JAN, revisar eso.
 - **`BarcodeDetector` no existe en Safari de iOS.** El hook carga un ponyfill WASM de
   ~300 kB de forma dinámica. No moverlo al bundle inicial.
 - **D1 no soporta transacciones interactivas** (`BEGIN`/`COMMIT`). Usar `db.batch()`.

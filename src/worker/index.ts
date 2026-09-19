@@ -8,6 +8,7 @@
  */
 
 import { handleAuth, currentUserId, type AuthEnv } from './auth';
+import { isLookupableJan } from '../lib/jan';
 
 export interface Env extends AuthEnv {
   DB: D1Database;
@@ -738,7 +739,9 @@ export default {
 
       if (request.method === 'GET' && path === '/api/lookup') {
         const jan = url.searchParams.get('jan');
-        if (!jan || !/^\d{8,13}$/.test(jan)) return json({ error: 'JAN inválido' }, 400);
+        // isLookupableJan descarta también el código de precio del manga: un
+        // cliente viejo o una llamada a mano no van a gastar cuota de Yahoo.
+        if (!jan || !isLookupableJan(jan)) return json({ error: 'JAN inválido' }, 400);
         const hit = await lookupJan(jan, env);
         return hit ? json(hit) : json({ error: 'no encontrado' }, 404);
       }

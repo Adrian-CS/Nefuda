@@ -53,6 +53,7 @@ const DICT = {
     lookup: 'Buscar',
     addByHand: 'Añadir algo sin código',
     addByHandHint: 'Para lo que no tiene código de barras: doujinshi, importaciones, cajas viejas.',
+    priceBarcode: 'Ese es el código de precio. En los libros japoneses hay dos: apunta al de arriba, el que empieza por 978.',
 
     // --- ficha ---
     newInShop: 'Nuevo en tienda',
@@ -147,6 +148,7 @@ const DICT = {
     lookup: 'Look up',
     addByHand: 'Add something with no code',
     addByHandHint: 'For things with no barcode: doujinshi, imports, old boxes.',
+    priceBarcode: 'That is the price code. Japanese books carry two: aim at the upper one, the one starting with 978.',
 
     // --- ficha ---
     newInShop: 'New in shop',
@@ -241,6 +243,7 @@ const DICT = {
     lookup: '検索',
     addByHand: 'コードなしで追加',
     addByHandHint: 'バーコードがない物用：同人誌、輸入品、古い箱など。',
+    priceBarcode: 'それは価格コードです。書籍のバーコードは2段組みです。上段の978で始まる方を読ませてください。',
 
     // --- ficha ---
     newInShop: '新品（ショップ）',
