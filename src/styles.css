@@ -482,6 +482,18 @@ body {
   gap: 12px;
 }
 
+/* Como .item-photo pero dentro de la hoja: miniatura y botón en fila, para no
+   comerse el alto que necesitan los campos del alta. */
+.sheet-photo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sheet-photo .button--photo {
+  flex: 1;
+}
+
 /* Dos líneas de precio separadas: «nuevo en tienda» y «segunda mano» nunca se
    funden en un único número. */
 .price-line {

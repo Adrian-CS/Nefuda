@@ -51,6 +51,8 @@ const DICT = {
     enterJanByHand: 'Escribir el JAN a mano',
     jan: 'Código JAN',
     lookup: 'Buscar',
+    addByHand: 'Añadir algo sin código',
+    addByHandHint: 'Para lo que no tiene código de barras: doujinshi, importaciones, cajas viejas.',
 
     // --- ficha ---
     newInShop: 'Nuevo en tienda',
@@ -143,6 +145,8 @@ const DICT = {
     enterJanByHand: 'Type the JAN by hand',
     jan: 'JAN code',
     lookup: 'Look up',
+    addByHand: 'Add something with no code',
+    addByHandHint: 'For things with no barcode: doujinshi, imports, old boxes.',
 
     // --- ficha ---
     newInShop: 'New in shop',
@@ -235,6 +239,8 @@ const DICT = {
     enterJanByHand: 'JANコードを手入力',
     jan: 'JANコード',
     lookup: '検索',
+    addByHand: 'コードなしで追加',
+    addByHandHint: 'バーコードがない物用：同人誌、輸入品、古い箱など。',
 
     // --- ficha ---
     newInShop: '新品（ショップ）',

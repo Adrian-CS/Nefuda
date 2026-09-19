@@ -33,9 +33,15 @@ export default function Scan() {
   const [paid, setPaid] = useState('');
   const [target, setTarget] = useState('');
 
-  // Alta manual, cuando ninguna tienda conoce el codigo.
+  // Alta manual: o ninguna tienda conoce el codigo, o no hay codigo que leer.
+  const [byHand, setByHand] = useState(false);
   const [manualName, setManualName] = useState('');
   const [manualMaker, setManualMaker] = useState('');
+
+  // La foto no puede subirse todavia: PUT /api/items/:id/photo necesita el id
+  // del ejemplar, y hasta que no se guarda el alta no existe. Se retiene aqui.
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
 
   // Un código se detecta muchas veces por segundo: sin esto saldrían varias
   // consultas a la vez para el mismo JAN.
@@ -78,9 +84,21 @@ export default function Scan() {
     api.vocab().then(setVocab).catch(() => {});
   }, []);
 
+  // createObjectURL retiene el fichero hasta que se revoca: uno por foto
+  // elegida, y el cleanup se encarga tanto del cambio como de salir de aqui.
+  useEffect(() => {
+    if (!photo) {
+      setPhotoUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(photo);
+    setPhotoUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [photo]);
+
   // Mientras la hoja está arriba la cámara no pinta nada: se apaga y así no
   // gasta batería ni vuelve a leer el mismo código por detrás.
-  const sheetUp = busy || notFound || hit !== null;
+  const sheetUp = busy || notFound || byHand || hit !== null;
   useEffect(() => {
     if (sheetUp) stop();
   }, [sheetUp, stop]);
@@ -106,8 +124,10 @@ export default function Scan() {
     setError(null);
     setPaid('');
     setTarget('');
+    setByHand(false);
     setManualName('');
     setManualMaker('');
+    setPhoto(null);
     looking.current = false;
     void start();
   }
@@ -128,6 +148,7 @@ export default function Scan() {
         maker: manualMaker.trim() || null,
       });
       setNotFound(false);
+      setByHand(false);
       setHit({ product, prices: [] });
     } catch (err) {
       setError((err as Error).message);
@@ -142,7 +163,7 @@ export default function Scan() {
     setSaving(true);
     setError(null);
     try {
-      await api.addItem({
+      const row = await api.addItem({
         product_id: hit.product.id,
         category_id: categoryId,
         status_id: statusId,
@@ -151,6 +172,18 @@ export default function Scan() {
         paid_price: keepPaid && paid ? Number(paid) : null,
         target_price: target ? Number(target) : null,
       });
+
+      // El ejemplar ya está guardado: que falle la foto no puede tirar el alta.
+      // Se aterriza en su ficha, que es donde está el botón para reintentarla.
+      if (photo) {
+        try {
+          await api.uploadPhoto(row.id, photo);
+        } catch {
+          navigate(`/item/${row.id}`);
+          return;
+        }
+      }
+
       navigate('/');
     } catch (err) {
       setError((err as Error).message);
@@ -206,6 +239,19 @@ export default function Scan() {
         </div>
       </form>
 
+      {/* Sin código de barras no hay búsqueda que valga: doujinshi, importaciones,
+          cajas viejas. `createProduct` ya acepta jan = null, faltaba la puerta. */}
+      <button
+        type="button"
+        className="button button--quiet"
+        onClick={() => {
+          setError(null);
+          setByHand(true);
+        }}
+      >
+        {t.addByHand}
+      </button>
+
       {sheetUp && (
         <>
           <div className="sheet-backdrop" onClick={reset} />
@@ -214,10 +260,10 @@ export default function Scan() {
 
             {busy && <p className="hint hint--block">{t.searching}</p>}
 
-            {notFound && (
+            {(notFound || byHand) && !hit && (
               <>
-                <p className="hint hint--block">{t.notFound}</p>
-                <p className="item-meta">{jan}</p>
+                <p className="hint hint--block">{notFound ? t.notFound : t.addByHandHint}</p>
+                {jan !== '' && <p className="item-meta">{jan}</p>}
 
                 <label className="field">
                   <span className="field-label">{t.productName}</span>
@@ -248,7 +294,7 @@ export default function Scan() {
                   {t.createByHand}
                 </button>
                 <button type="button" className="button button--quiet" onClick={reset}>
-                  {t.retry}
+                  {notFound ? t.retry : t.cancel}
                 </button>
               </>
             )}
@@ -269,6 +315,26 @@ export default function Scan() {
                       {hit.product.jan ? ` · ${hit.product.jan}` : ''}
                     </span>
                   </div>
+                </div>
+
+                {/* La foto se elige aquí pero se sube DESPUÉS del alta: el
+                    endpoint es /api/items/:id/photo y hasta entonces no hay id. */}
+                <div className="sheet-photo">
+                  {photoUrl ? (
+                    <img className="item-thumb" src={photoUrl} alt="" />
+                  ) : (
+                    <div className="item-thumb item-thumb--empty" />
+                  )}
+                  <label className="button button--quiet button--photo">
+                    {t.addPhoto}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      hidden
+                      onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
+                    />
+                  </label>
                 </div>
 
                 {/* Yahoo y Rakuten devuelven precio de tienda, producto nuevo.
