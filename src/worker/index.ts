@@ -104,6 +104,7 @@ async function yahooByJan(jan: string, env: Env): Promise<ShopPrice | null> {
     `?appid=${env.YAHOO_APP_ID}&jan_code=${encodeURIComponent(jan)}&results=5&sort=%2Bprice`;
 
   const res = await fetch(url, { cf: { cacheTtl: 900, cacheEverything: true } });
+  console.log(`[diag] yahoo ${jan} -> HTTP ${res.status}`); // TEMPORAL
   if (!res.ok) return null;
 
   const hit = ((await res.json()) as any)?.hits?.[0];
@@ -137,9 +138,28 @@ async function rakutenByJan(jan: string, env: Env): Promise<ShopPrice[]> {
     `?applicationId=${env.RAKUTEN_APP_ID}&keyword=${encodeURIComponent(jan)}&hits=30&sort=%2BitemPrice`;
 
   const res = await fetch(url, { cf: { cacheTtl: 900, cacheEverything: true } });
-  if (!res.ok) return [];
+
+  // ------------------------------------------------------------------
+  // TEMPORAL: diagnóstico de los shopCode y de la versión del endpoint.
+  // Se quita en cuanto sepamos qué devuelve de verdad. Ver `wrangler tail`.
+  // ------------------------------------------------------------------
+  console.log(`[diag] rakuten ${jan} -> HTTP ${res.status}`);
+  if (!res.ok) {
+    console.log(`[diag] rakuten ERROR: ${(await res.text()).slice(0, 300)}`);
+    return [];
+  }
 
   const items = ((await res.json()) as any)?.Items ?? [];
+
+  console.log(`[diag] rakuten items=${items.length}`);
+  console.log(`[diag] rakuten claves=${Object.keys(items[0]?.Item ?? items[0] ?? {}).join(',')}`);
+  for (const r of items.slice(0, 30)) {
+    const h = r?.Item ?? r;
+    console.log(
+      `[diag]   ${h?.shopCode ?? '(SIN shopCode)'} | ${h?.itemPrice} | ${String(h?.itemName ?? '').slice(0, 45)}`
+    );
+  }
+  // ------------------------------------------------------------------
   const found: ShopPrice[] = [];
   const seen = new Set<string>();
 
