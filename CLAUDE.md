@@ -111,6 +111,14 @@ prohíben). Detalles que importan:
   grado**. Antes sin precio que con el precio equivocado.
 - Son tiendas, no C2C: sus precios van por encima de lo que se cierra en Mercari. Es
   «segunda mano en tienda», no «lo que vale en Mercari».
+- **La segunda mano puede salir MÁS CARA que el producto nuevo, y no es un error.** Visto
+  con アオのハコ 24: ¥572 nuevo (precio de cubierta) y ¥660 usado en 駿河屋. En manga de
+  serie viva el nuevo vale lo que pone en la contraportada, mientras que el de segunda
+  mano lo pone la demanda y la disponibilidad. Que las dos líneas estén separadas es
+  justo lo que deja verlo; fundirlas en un «ahora vale» lo taparía.
+- **Los libros electrónicos se descartan** (`EBOOK_MARKER`). Salen con el mismo título y
+  a menudo al mismo precio que el tomo de papel, y colarlos como «nuevo en tienda» sería
+  comparar tu ejemplar físico contra un archivo.
 
 De ahí una regla de producto: **comparar tu ejemplar usado contra el precio nuevo de
 tienda infla el valor y miente.** El código ya lo respeta:

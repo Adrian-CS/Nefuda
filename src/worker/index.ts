@@ -52,6 +52,13 @@ const USED_SHOPS: ReadonlyArray<{ code: string; slug: string }> = [
  */
 const USED_MARKER = /中古|ユーズド|\bused\b/i;
 
+/**
+ * Un libro electrónico NO es el mismo producto que el tomo de papel, aunque
+ * comparta título y salga al mismo precio. Si se cuela como «nuevo en tienda»
+ * estás comparando tu ejemplar físico contra un archivo.
+ */
+const EBOOK_MARKER = /電子書籍|kobo-ebooks|ebook/i;
+
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 
 const json = (data: unknown, status = 200) =>
@@ -108,8 +115,10 @@ async function yahooByJan(jan: string, env: Env): Promise<ShopPrice | null> {
     `?appid=${env.YAHOO_APP_ID}&jan_code=${encodeURIComponent(jan)}&results=5&sort=%2Bprice`;
 
   const res = await fetch(url, { cf: { cacheTtl: 900, cacheEverything: true } });
-  console.log(`[diag] yahoo ${jan} -> HTTP ${res.status}`); // TEMPORAL
-  if (!res.ok) return null;
+  if (!res.ok) {
+    console.warn(`yahoo HTTP ${res.status}`);
+    return null;
+  }
 
   const hit = ((await res.json()) as any)?.hits?.[0];
   if (!hit) return null;
@@ -159,28 +168,14 @@ async function rakutenByJan(jan: string, env: Env): Promise<ShopPrice[]> {
     cf: { cacheTtl: 900, cacheEverything: true },
   });
 
-  // ------------------------------------------------------------------
-  // TEMPORAL: diagnóstico de los shopCode y de la versión del endpoint.
-  // Se quita en cuanto sepamos qué devuelve de verdad. Ver `wrangler tail`.
-  // ------------------------------------------------------------------
-  console.log(`[diag] rakuten ${jan} -> HTTP ${res.status}`);
+  // Que un fallo de Rakuten deje rastro siempre: esta avería estuvo meses en
+  // producción sin verse porque la llamada se caía callando.
   if (!res.ok) {
-    // warn y no log: que se vea en `wrangler tail` aunque se quite el [diag].
     console.warn(`rakuten HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
     return [];
   }
 
   const items = ((await res.json()) as any)?.Items ?? [];
-
-  console.log(`[diag] rakuten items=${items.length}`);
-  console.log(`[diag] rakuten claves=${Object.keys(items[0]?.Item ?? items[0] ?? {}).join(',')}`);
-  for (const r of items.slice(0, 30)) {
-    const h = r?.Item ?? r;
-    console.log(
-      `[diag]   ${h?.shopCode ?? '(SIN shopCode)'} | ${h?.itemPrice} | ${String(h?.itemName ?? '').slice(0, 45)}`
-    );
-  }
-  // ------------------------------------------------------------------
   const found: ShopPrice[] = [];
   const seen = new Set<string>();
 
@@ -192,34 +187,35 @@ async function rakutenByJan(jan: string, env: Env): Promise<ShopPrice[]> {
     if (!hit || !Number.isFinite(price) || price <= 0) continue;
 
     const name = String(hit.itemName ?? '');
+
+    // El mismo título al mismo precio, pero es un archivo, no el tomo.
+    if (EBOOK_MARKER.test(name) || EBOOK_MARKER.test(String(hit.shopCode ?? ''))) continue;
+
+    // Quien manda es el TÍTULO, no la tienda. Se vio con datos reales: 駿河屋
+    // marca 【中古】, y hay otras tiendas de segunda mano que también lo marcan
+    // y no están en la lista (買取王子 y compañía). Descartarlas era tirar
+    // precios buenos, así que las de la lista van con su nombre y el resto
+    // caen en 'rakuten' con grado 'used', que es igual de cierto.
     const used = USED_MARKER.test(name);
     const usedShop = USED_SHOPS.find((s) => s.code === hit.shopCode);
+    const slug = used ? (usedShop?.slug ?? 'rakuten') : 'rakuten';
+    const condition = used ? 'used' : 'new';
 
-    // Tienda de segunda mano: solo cuenta si el título lo confirma. Cualquier
-    // otra: solo cuenta como nueva si el título no lo desmiente. Lo que no se
-    // puede clasificar se tira, que es mejor que colocarlo en el grado que no es.
-    let slug: string;
-    if (usedShop) {
-      if (!used) continue;
-      slug = usedShop.slug;
-    } else {
-      if (used) continue;
-      slug = 'rakuten';
-    }
-
-    if (seen.has(slug)) continue;
-    seen.add(slug);
+    // 'rakuten' puede salir dos veces, una por grado: la clave lleva los dos.
+    const key = `${slug}|${condition}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
 
     found.push({
       shopSlug: slug,
-      conditionSlug: used ? 'used' : 'new',
+      conditionSlug: condition,
       price,
       url: hit.itemUrl ?? null,
       image: hit.mediumImageUrls?.[0]?.imageUrl ?? null,
       name,
       // En los de segunda mano el título va lleno de 【中古】 y marcas de estado,
       // y shopName es la tienda, no el fabricante: no sirve para nombrar la ficha.
-      maker: usedShop ? null : (hit.shopName ?? null),
+      maker: used ? null : (hit.shopName ?? null),
       category: null,
     });
   }
