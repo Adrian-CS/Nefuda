@@ -286,6 +286,13 @@ async function lookupJan(jan: string, env: Env) {
 
   await savePrices(env, product.id, found);
 
+  // Una línea por búsqueda con lo encontrado, tienda y grado. Cuesta nada y es
+  // justo lo que faltaba cuando Rakuten llevaba meses caída: sin esto, «no hay
+  // precio de segunda mano» y «la API está rota» se leen exactamente igual.
+  console.log(
+    `lookup ${jan}: ${found.map((p) => `${p.shopSlug}/${p.conditionSlug}=${p.price}`).join(' ') || '(nada)'}`
+  );
+
   return {
     product,
     // El grado viaja con cada precio: la pantalla pinta «nuevo en tienda» y

@@ -218,11 +218,15 @@ iOS hace zoom al enfocarlos.
   Estuvo roto en producción sin que se notara, porque la línea de «nuevo en tienda» la
   sostenía Yahoo. Por eso el fallo de Rakuten ahora sale por `console.warn` y se ve en
   `wrangler tail`.
-- **Los `shopCode` de 駿河屋 (`surugaya-a-too`) y ブックオフ (`bookoffonline`) y el campo
-  `shopCode` de la respuesta de Rakuten están sin verificar contra una llamada real.**
-  Igual que el resto de campos de las dos APIs: comprobarlos antes de fiarse. Si el
-  `shopCode` no llega o el título no marca el grado, la línea de segunda mano sale vacía
-  en silencio, que es el modo de fallo que este proyecto ya ha visto.
+- **La segunda mano depende del 【中古】 del título, no de la lista de tiendas.** Los
+  `shopCode` (`surugaya-a-too`, `bookoffonline`) y el campo `shopCode` están verificados
+  contra respuestas reales. Pero `USED_SHOPS` es solo para poner nombre bonito: hay
+  muchísimas tiendas de segunda mano en 楽天市場 (買取王子, la familia `youing-*`…) y
+  perseguirlas una a una es perder. Las que no están en la lista caen en `rakuten` con
+  grado `used`, y así entran igual.
+- **Que una tienda no salga no significa que el código esté mal.** La segunda mano es
+  stock de pieza única: lo que hay en una tienda física de ブックオフ no está en su
+  escaparate de 楽天市場, y su web propia es otro catálogo distinto de los dos.
 - **Yahoo limita a 1 consulta por segundo** (y 50.000 al día por App ID). El cron duerme
   1,1 s entre productos. No quitar esa pausa.
 - **El App ID de Yahoo no puede exponerse.** Las llamadas salen del Worker, nunca del
