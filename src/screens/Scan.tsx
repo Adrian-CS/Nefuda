@@ -110,7 +110,7 @@ export default function Scan() {
 
   // Mientras la hoja está arriba la cámara no pinta nada: se apaga y así no
   // gasta batería ni vuelve a leer el mismo código por detrás.
-  const sheetUp = busy || notFound || byHand || hit !== null;
+  const sheetUp = busy || notFound || byHand || error !== null || hit !== null;
   useEffect(() => {
     if (sheetUp) stop();
   }, [sheetUp, stop]);
@@ -281,6 +281,20 @@ export default function Scan() {
             <div className="sheet-grip" aria-hidden="true" />
 
             {busy && <p className="hint hint--block">{t.searching}</p>}
+
+            {/* Un fallo suelto, sin producto ni alta manual detrás. Tiene que
+                pintarse SIEMPRE: la hoja se lleva la cámara por delante al
+                subir, y sin nada visible ni botón de volver la pantalla se
+                queda muerta enseñando «Cargando…». `reset` reenciende. */}
+            {error !== null && !hit && !notFound && !byHand && (
+              <>
+                <p className="error">{error}</p>
+                {jan !== '' && <p className="item-meta">{jan}</p>}
+                <button type="button" className="button button--primary" onClick={reset}>
+                  {t.retry}
+                </button>
+              </>
+            )}
 
             {(notFound || byHand) && !hit && (
               <>
