@@ -15,6 +15,12 @@ directory = "./dist"
 not_found_handling = "single-page-application"
 run_worker_first = ["/api/*"]
 
+# La web autorizada en la ficha de la app de Rakuten. Desde 2026 la API valida
+# que el Referer coincida, así que este valor y el del portal deben ser iguales.
+# No es un secreto: es la URL pública de la app.
+[vars]
+RAKUTEN_REFERER = "https://nefuda.adrian7-drive.workers.dev/"
+
 [triggers]
 crons = ["0 21 * * *"]   # 06:00 JST
 
@@ -32,5 +38,6 @@ bucket_name = "nefuda-fotos"
 #   npx wrangler secret put INVITE_CODE       # para dar de alta a alguien
 #   npx wrangler secret put YAHOO_APP_ID
 #   npx wrangler secret put RAKUTEN_APP_ID
+#   npx wrangler secret put RAKUTEN_ACCESS_KEY   # nuevo desde la API de 2026
 #
 # En local van en .dev.vars (que está en .gitignore).

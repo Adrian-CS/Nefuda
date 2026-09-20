@@ -198,6 +198,18 @@ iOS hace zoom al enfocarlos.
 - **Verificar los nombres de campo de las dos APIs** contra la documentación vigente antes
   de fiarse. Están escritos según la forma habitual de sus respuestas, pero ambas han
   cambiado de estructura entre versiones y fallan en silencio.
+- **Rakuten rehízo la API en 2026 y esto ya nos mordió una vez.** El dominio viejo
+  (`app.rakuten.co.jp/services/api/…`) se apagó el 14/05/2026 y la versión `20220601` el
+  18/08/2026. Ahora son tres cosas a la vez, y si falta una responde
+  `400 specify valid applicationId`, que despista porque el ID puede estar bien:
+  1. Dominio y versión nuevos: `openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260701`.
+  2. `applicationId` **y** `accessKey`, las dos como parámetros. El ID solo ya no vale.
+  3. Cabecera `Referer` que coincida con la web autorizada en la ficha de la app. Un
+     Worker no la manda solo: sale de `RAKUTEN_REFERER` en `wrangler.toml`.
+
+  Estuvo roto en producción sin que se notara, porque la línea de «nuevo en tienda» la
+  sostenía Yahoo. Por eso el fallo de Rakuten ahora sale por `console.warn` y se ve en
+  `wrangler tail`.
 - **Los `shopCode` de 駿河屋 (`surugaya-a-too`) y ブックオフ (`bookoffonline`) y el campo
   `shopCode` de la respuesta de Rakuten están sin verificar contra una llamada real.**
   Igual que el resto de campos de las dos APIs: comprobarlos antes de fiarse. Si el
@@ -234,7 +246,8 @@ npx wrangler r2 bucket create nefuda-fotos
 npx wrangler secret put SESSION_SECRET   # openssl rand -base64 48
 npx wrangler secret put INVITE_CODE
 npx wrangler secret put YAHOO_APP_ID     # developer.yahoo.co.jp
-npx wrangler secret put RAKUTEN_APP_ID   # webservice.rakuten.co.jp
+npx wrangler secret put RAKUTEN_APP_ID      # webservice.rakuten.co.jp
+npx wrangler secret put RAKUTEN_ACCESS_KEY  # misma ficha; obligatorio desde 2026
 
 npm run deploy
 ```

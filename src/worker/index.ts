@@ -14,7 +14,11 @@ export interface Env extends AuthEnv {
   DB: D1Database;
   FOTOS: R2Bucket;
   YAHOO_APP_ID: string;
+  /** Desde 2026 Rakuten exige las dos: el ID solo ya no autentica. */
   RAKUTEN_APP_ID: string;
+  RAKUTEN_ACCESS_KEY: string;
+  /** La web autorizada en la ficha de la app. Va como Referer y Origin. */
+  RAKUTEN_REFERER: string;
 }
 
 interface ShopPrice {
@@ -132,12 +136,28 @@ async function yahooByJan(jan: string, env: Env): Promise<ShopPrice | null> {
  * gratuito de Workers es lo que acaba poniendo el techo.
  */
 async function rakutenByJan(jan: string, env: Env): Promise<ShopPrice[]> {
+  // Rakuten rehizo la API en 2026: dominio nuevo, versión nueva, y ahora hace
+  // falta accessKey además del ID. El viejo app.rakuten.co.jp/services/api/…
+  // se apagó el 14/05/2026, y la versión 20220601 el 18/08/2026.
+  //
+  // Además exige Referer: valida que la llamada venga de la web autorizada en
+  // la ficha de la app. Un Worker no manda Referer solo, hay que ponerlo.
+  if (!env.RAKUTEN_ACCESS_KEY) {
+    console.warn('rakuten: falta RAKUTEN_ACCESS_KEY, la API de 2026 no autentica sin ella');
+    return [];
+  }
+
   // Rakuten no filtra por JAN, pero buscarlo como palabra clave funciona bien.
   const url =
-    `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601` +
-    `?applicationId=${env.RAKUTEN_APP_ID}&keyword=${encodeURIComponent(jan)}&hits=30&sort=%2BitemPrice`;
+    `https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260701` +
+    `?applicationId=${env.RAKUTEN_APP_ID}&accessKey=${env.RAKUTEN_ACCESS_KEY}` +
+    `&keyword=${encodeURIComponent(jan)}&hits=30&sort=%2BitemPrice`;
 
-  const res = await fetch(url, { cf: { cacheTtl: 900, cacheEverything: true } });
+  const referer = env.RAKUTEN_REFERER ?? '';
+  const res = await fetch(url, {
+    headers: referer ? { Referer: referer, Origin: new URL(referer).origin } : {},
+    cf: { cacheTtl: 900, cacheEverything: true },
+  });
 
   // ------------------------------------------------------------------
   // TEMPORAL: diagnóstico de los shopCode y de la versión del endpoint.
@@ -145,7 +165,8 @@ async function rakutenByJan(jan: string, env: Env): Promise<ShopPrice[]> {
   // ------------------------------------------------------------------
   console.log(`[diag] rakuten ${jan} -> HTTP ${res.status}`);
   if (!res.ok) {
-    console.log(`[diag] rakuten ERROR: ${(await res.text()).slice(0, 300)}`);
+    // warn y no log: que se vea en `wrangler tail` aunque se quite el [diag].
+    console.warn(`rakuten HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
     return [];
   }
 
