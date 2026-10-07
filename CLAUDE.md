@@ -128,6 +128,10 @@ tienda infla el valor y miente.** El código ya lo respeta:
 - Si no hay precio de ese grado, se cae a lo que pagaste en vez de inventar un número.
 - En la ficha hay que mostrar **dos líneas separadas**, «nuevo en tienda» y «segunda
   mano», nunca un único «ahora vale». La hoja del escáner hace lo mismo.
+- **La ficha pinta `prices_by_condition`: una línea por grado.** No vale pintar solo el
+  grado del propio ejemplar, que es como estaba: un precio anotado a mano en otro grado
+  se guardaba bien y no aparecía por ninguna parte. La línea de segunda mano sale
+  siempre, vacía si hace falta, porque «no hay línea» y «no hay precio» se confundían.
 - El cron avisa contra el **grado del ejemplar de cada quien**: calcula el mínimo por grado
   y filtra por `ui.condition_id`. Sin eso, una figura nueva barata dispararía el aviso de
   quien tiene la suya usada.
@@ -138,13 +142,12 @@ tienda infla el valor y miente.** El código ya lo respeta:
 
 Funciona de punta a punta: registro, login, alta por JAN, colección y cron.
 
-El código está entero: las cinco pantallas, el Worker, el esquema y los iconos. `npm run
-build` pasa y `wrangler deploy --dry-run` empaqueta bien. **Nada de esto se ha ejecutado
-contra las APIs reales todavía**, que es donde está el riesgo de verdad.
+Desplegado y funcionando en `nefuda.adrian7-drive.workers.dev`. Las dos APIs responden,
+el escaneo por JAN da precio de nuevo y de segunda mano, y las fotos suben a R2.
 
 | Zona | Estado |
 |---|---|
-| `schema.sql` | Completo. Hay que reejecutarlo: añade `bookoff` y pone `is_api = 1` en 駿河屋 |
+| `schema.sql` | Completo y ejecutado |
 | `src/worker/index.ts`, `auth.ts` | Completos |
 | `src/i18n.tsx`, `src/lib/api.ts`, `src/lib/jan.ts`, `src/hooks/useScanner.ts` | Completos |
 | `src/screens/*.tsx` | Las cinco completas |
@@ -153,12 +156,14 @@ contra las APIs reales todavía**, que es donde está el riesgo de verdad.
 
 ### Lo siguiente
 
-1. **Conseguir el App ID de Rakuten y el de Yahoo.** Sin ellos no funciona ni la búsqueda
-   por JAN, que es el corazón de la app.
-2. **Verificar contra una llamada real** los nombres de campo de las dos APIs, los dos
-   `shopCode` y el marcador de 【中古】. Ver las trampas de aquí abajo.
-3. `npm run db:remote` y `npm run deploy`.
-4. Registrar una passkey en producción: la de `localhost` no vale allí, el `rpID` cambia.
+1. **Anuncios que son lotes.** Visto de verdad: el pack de 26 tomos de アオのハコ a ¥13.280
+   y un CD de ¥374 listado a ¥30.374 por tiendas de «おまとめ». Ahora mismo salva el orden
+   ascendente —se coge el más barato— pero en algo descatalogado donde el lote sea el
+   único anuncio, ese precio entraría como si fuera de una pieza.
+2. Lectura corrupta del escáner: salió un `4181080848334` que no existe. Comprobar el
+   dígito de control del EAN-13 antes de consultar.
+3. El valor de la colección usa precios de tienda, que es lo que CUESTA comprarlo, no lo
+   que te darían por venderlo. Decidir si eso se renombra en la interfaz.
 
 ---
 

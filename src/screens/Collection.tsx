@@ -5,7 +5,12 @@ import { useI18n, yen, type Lang } from '../i18n';
 import { IconScan, IconSettings } from '../icons';
 
 /** Nombre de una fila de vocabulario en el idioma activo. */
-export const label = (row: VocabRow, lang: Lang) =>
+/**
+ * Solo necesita los tres nombres, así que los pide y ya: exigir `VocabRow`
+ * entero dejaba fuera a `PriceByCondition`, que trae los nombres del grado
+ * pero no el `id` de la fila de vocabulario.
+ */
+export const label = (row: Pick<VocabRow, 'name_es' | 'name_en' | 'name_ja'>, lang: Lang) =>
   lang === 'ja' ? row.name_ja : lang === 'en' ? row.name_en : row.name_es;
 
 export default function Collection() {

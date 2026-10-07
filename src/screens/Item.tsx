@@ -146,6 +146,14 @@ export default function Item() {
   );
 
   /**
+   * Un grado por línea, con el precio mínimo de cada uno. `prices_by_condition`
+   * ya venía del Worker pero no lo pintaba nadie: la ficha enseñaba el grado
+   * 'new' y el del propio ejemplar, y nada más. Un precio anotado a mano en
+   * cualquier otro grado se guardaba bien y no se veía en ninguna parte.
+   */
+  const usedPrices = (item?.prices_by_condition ?? []).filter((p) => p.slug !== 'new');
+
+  /**
    * La gráfica pinta UN grado, nunca una mezcla: juntar el precio de nuevo con
    * el de segunda mano en la misma línea dibuja una caída que no existe.
    * Se prefiere el grado de tu ejemplar; si aún no tiene dos puntos, se enseña
@@ -301,18 +309,28 @@ export default function Item() {
         )}
       </div>
 
-      {myCondition && myCondition.slug !== 'new' && (
-        <div className="price-line">
-          <span className="price-line-label">
-            {t.secondHand} · {label(myCondition, lang)}
-          </span>
-          {item.best_price !== null ? (
-            <span className="price-line-value">{yen(item.best_price, lang)}</span>
-          ) : (
-            <span className="price-line-value price-line-value--none">{t.noPrice}</span>
-          )}
+      {/* Siempre visible, aunque esté vacía: que no aparezca la línea y que no
+          haya precio son cosas distintas, y antes se veían igual. */}
+      <div className="price-line">
+        <span className="price-line-label">
+          {t.secondHand}
+          {usedPrices[0] ? ` · ${label(usedPrices[0], lang)}` : ''}
+        </span>
+        {usedPrices[0] ? (
+          <span className="price-line-value">{yen(usedPrices[0].price, lang)}</span>
+        ) : (
+          <span className="price-line-value price-line-value--none">{t.noPrice}</span>
+        )}
+      </div>
+
+      {/* Vienen ordenados por grado descendente, así que el resto van debajo.
+          Cada uno con su nombre: 'usado' y 'para piezas' no son lo mismo. */}
+      {usedPrices.slice(1).map((p) => (
+        <div className="price-line price-line--sub" key={p.condition_id}>
+          <span className="price-line-label">{label(p, lang)}</span>
+          <span className="price-line-value">{yen(p.price, lang)}</span>
         </div>
-      )}
+      ))}
 
       {item.paid_price !== null && (
         <p className="hint">
@@ -387,7 +405,7 @@ export default function Item() {
         <button
           type="button"
           className="button button--quiet"
-          disabled={saving || manualPrice === ''}
+          disabled={saving || manualPrice === '' || shopId === null || manualCondition === null}
           onClick={addManualPrice}
         >
           {t.save}
