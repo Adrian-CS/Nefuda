@@ -240,6 +240,11 @@ iOS hace zoom al enfocarlos.
   que pilla. El de arriba es el ISBN-13 (978…), que sirve; el de abajo empieza por 192 y
   solo lleva género y precio. `isPriceBarcode` en `src/lib/jan.ts` lo descarta en el
   escáner y en `/api/lookup`. Si algún día se admiten códigos que no sean JAN, revisar eso.
+- **Node solo se usa para construir; el Worker NO corre sobre Node.** Cloudflare ejecuta
+  `workerd`, con su propio runtime, y `nodejs_compat` es la reimplementación de Cloudflare
+  de esas APIs, no Node. Por eso los CVE de Node (como el de Brotli de octubre de 2026,
+  CVE-2026-111497) no alcanzan a la app desplegada: afectan a la máquina donde se lanza
+  `npm run build` o `npm run dev`. `engines` pide >=22.23.4 por eso.
 - **`BarcodeDetector` no existe en Safari de iOS.** El hook carga un ponyfill WASM de
   ~300 kB de forma dinámica. No moverlo al bundle inicial.
 - **D1 no soporta transacciones interactivas** (`BEGIN`/`COMMIT`). Usar `db.batch()`.
