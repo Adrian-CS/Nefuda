@@ -59,6 +59,9 @@ const USED_MARKER = /中古|ユーズド|\bused\b/i;
  */
 const EBOOK_MARKER = /電子書籍|kobo-ebooks|ebook/i;
 
+/** Lo único que se acepta subir a R2, y lo único que se devuelve al servirlo. */
+const PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif']);
+
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 
 const json = (data: unknown, status = 200) =>
@@ -419,20 +422,34 @@ async function priceHistory(userId: string, itemId: string, env: Env) {
 }
 
 async function putPhoto(userId: string, itemId: string, request: Request, env: Env) {
-  const owns = await env.DB.prepare(`SELECT id FROM user_items WHERE id = ?1 AND user_id = ?2`)
+  // Se lee también la clave vieja: hace falta para borrarla luego.
+  const owns = await env.DB.prepare(
+    `SELECT photo_key FROM user_items WHERE id = ?1 AND user_id = ?2`
+  )
     .bind(itemId, userId)
-    .first();
+    .first<{ photo_key: string | null }>();
   if (!owns) return null;
+
+  // El content-type lo pone el cliente y getPhoto lo devuelve tal cual, desde
+  // el MISMO origen que la app. Sin esta lista, subir un text/html sería
+  // dejarse un script guardado corriendo en el origen de la propia sesión.
+  const type = (request.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
+  if (!PHOTO_TYPES.has(type)) return { error: 'el fichero no es una imagen' };
 
   // El prefijo con el user_id es lo que impide que nadie lea las fotos de otro.
   const key = `fotos/${userId}/${crypto.randomUUID()}`;
-  await env.FOTOS.put(key, request.body, {
-    httpMetadata: { contentType: request.headers.get('content-type') ?? 'image/jpeg' },
-  });
+  await env.FOTOS.put(key, request.body, { httpMetadata: { contentType: type } });
 
-  await env.DB.prepare(`UPDATE user_items SET photo_key = ?2 WHERE id = ?1`)
-    .bind(itemId, key)
+  await env.DB.prepare(`UPDATE user_items SET photo_key = ?2 WHERE id = ?1 AND user_id = ?3`)
+    .bind(itemId, key, userId)
     .run();
+
+  // La clave lleva un UUID nuevo cada vez, así que sin esto cada recambio de
+  // foto dejaría la anterior en R2 para siempre. El plan gratuito son 10 GB y
+  // nadie los vigila. Si el borrado falla, el alta ya está hecha: no se tira.
+  if (owns.photo_key && owns.photo_key !== key) {
+    await env.FOTOS.delete(owns.photo_key).catch(() => {});
+  }
 
   return { photo_key: key };
 }
@@ -445,6 +462,9 @@ async function getPhoto(userId: string, key: string, env: Env) {
     headers: {
       'content-type': object.httpMetadata?.contentType ?? 'image/jpeg',
       'cache-control': 'private, max-age=86400',
+      // Se sirve desde el origen de la app: sin esto el navegador podría
+      // adivinar un tipo distinto del declarado y ejecutar lo que no debe.
+      'x-content-type-options': 'nosniff',
     },
   });
 }
@@ -581,13 +601,24 @@ async function patchItem(userId: string, itemId: string, body: any, env: Env) {
 }
 
 async function deleteItem(userId: string, itemId: string, env: Env) {
+  // La clave de la foto se lee ANTES de borrar la fila: después ya no hay de
+  // dónde sacarla y el objeto se quedaría en R2 sin nadie que lo referencie.
+  const row = await env.DB.prepare(
+    `SELECT photo_key FROM user_items WHERE id = ?1 AND user_id = ?2`
+  )
+    .bind(itemId, userId)
+    .first<{ photo_key: string | null }>();
+
   const res = await env.DB.prepare(`DELETE FROM user_items WHERE id = ?1 AND user_id = ?2`)
     .bind(itemId, userId)
     .run();
+  if (res.meta.changes === 0) return null;
+
+  if (row?.photo_key) await env.FOTOS.delete(row.photo_key).catch(() => {});
 
   // Las flags y el historial de avisos se van solos por ON DELETE CASCADE.
   // Los price_points NO: son del catálogo común y le sirven al siguiente.
-  return res.meta.changes > 0 ? { ok: true } : null;
+  return { ok: true };
 }
 
 /**
@@ -811,7 +842,8 @@ export default {
       const photo = path.match(/^\/api\/items\/(\d+)\/photo$/);
       if (request.method === 'PUT' && photo) {
         const done = await putPhoto(userId, photo[1], request, env);
-        return done ? json(done) : json({ error: 'no encontrado' }, 404);
+        if (!done) return json({ error: 'no encontrado' }, 404);
+        return 'error' in done ? json(done, 400) : json(done);
       }
 
       if (request.method === 'GET' && path.startsWith('/api/photo/')) {

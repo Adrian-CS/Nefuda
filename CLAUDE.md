@@ -160,10 +160,10 @@ el escaneo por JAN da precio de nuevo y de segunda mano, y las fotos suben a R2.
    y un CD de ¥374 listado a ¥30.374 por tiendas de «おまとめ». Ahora mismo salva el orden
    ascendente —se coge el más barato— pero en algo descatalogado donde el lote sea el
    único anuncio, ese precio entraría como si fuera de una pieza.
-2. Lectura corrupta del escáner: salió un `4181080848334` que no existe. Comprobar el
-   dígito de control del EAN-13 antes de consultar.
-3. El valor de la colección usa precios de tienda, que es lo que CUESTA comprarlo, no lo
+2. El valor de la colección usa precios de tienda, que es lo que CUESTA comprarlo, no lo
    que te darían por venderlo. Decidir si eso se renombra en la interfaz.
+3. Nada limita el tamaño de la foto que se sube. Con dos personas da igual, pero R2 son
+   10 GB y el Worker acepta hasta 100 MB por petición.
 
 ---
 
@@ -236,6 +236,19 @@ iOS hace zoom al enfocarlos.
   1,1 s entre productos. No quitar esa pausa.
 - **El App ID de Yahoo no puede exponerse.** Las llamadas salen del Worker, nunca del
   navegador.
+- **No añadir validación del dígito de control al escáner: no serviría de nada.** Se
+  intentó razonar que `4181080848334` era una lectura corrupta, y no lo es: su dígito de
+  control es correcto. Y no podía ser de otra forma, porque EAN y UPC lo verifican dentro
+  del propio descodificador, así que un lector nunca entrega un código que no cuadre. Si
+  sale un código raro, es que leyó otro símbolo del envase, no que leyera mal.
+- **Las fotos de R2 hay que borrarlas a mano.** La clave lleva un UUID nuevo en cada
+  subida, así que cambiar la foto deja huérfana la anterior, y borrar el ejemplar dejaría
+  huérfana la suya: D1 no arrastra a R2. `putPhoto` y `deleteItem` se encargan. En
+  `deleteItem`, la clave se lee ANTES del DELETE o se pierde.
+- **Las fotos se sirven desde el origen de la app** (`/api/photo/...`), así que el
+  content-type importa: `PHOTO_TYPES` limita lo que se puede subir y la respuesta va con
+  `nosniff`. Sin eso, subir un `text/html` sería dejarse un script guardado corriendo en
+  el origen de la propia sesión.
 - **Los libros japoneses llevan dos códigos de barras apilados**, y el lector agarra el
   que pilla. El de arriba es el ISBN-13 (978…), que sirve; el de abajo empieza por 192 y
   solo lleva género y precio. `isPriceBarcode` en `src/lib/jan.ts` lo descarta en el

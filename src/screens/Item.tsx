@@ -234,8 +234,10 @@ export default function Item() {
     try {
       await api.uploadPhoto(item.id, file);
       fill(await api.item(item.id));
-    } catch (err) {
-      setError((err as Error).message);
+    } catch {
+      // El Worker contesta en español y aquí la interfaz va en tres idiomas:
+      // se traduce el fallo en vez de enseñar su texto tal cual.
+      setError(t.photoFailed);
     } finally {
       setSaving(false);
     }

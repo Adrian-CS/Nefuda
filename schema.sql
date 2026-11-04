@@ -256,13 +256,24 @@ FROM (
 WHERE rn = 1;
 
 -- Las tres cifras de la cabecera, calculadas con la bandera in_collection.
-CREATE VIEW IF NOT EXISTS collection_totals AS
+--
+-- DROP antes de CREATE a propósito: con `IF NOT EXISTS`, una vista ya creada
+-- no se actualizaría nunca al reejecutar el esquema, y esta ha cambiado.
+DROP VIEW IF EXISTS collection_totals;
+CREATE VIEW collection_totals AS
 SELECT
   ui.user_id,
   COUNT(*)                AS pieces,
   SUM(COALESCE(ui.paid_price, 0)) AS spent,
+  -- MIN acotado al MISMO grado del ejemplar, igual que `best_price` en
+  -- listCollection. Sin ese filtro cogía el mínimo de todos los grados, así que
+  -- un precio de segunda mano rebajaba el valor de un ejemplar nuevo. Daba
+  -- igual mientras todos los precios eran 'new'; desde que 駿河屋 y compañía
+  -- entran por Rakuten, ya no.
   SUM(COALESCE(
-    (SELECT MIN(lp.price) FROM latest_prices lp WHERE lp.product_id = ui.product_id),
+    (SELECT MIN(lp.price) FROM latest_prices lp
+      WHERE lp.product_id = ui.product_id
+        AND lp.condition_id = ui.condition_id),
     ui.paid_price, 0
   ))                      AS worth
 FROM user_items ui
