@@ -234,6 +234,20 @@ CREATE INDEX IF NOT EXISTS idx_alert_log_item
 
 -- Productos que el cron debe consultar: los que alguien sigue con un estado
 -- marcado como track_price. Un estado nuevo tuyo entra aquí solo si lo pides.
+-- Cuándo se miró por última vez cada producto, pase lo que pase: aunque no
+-- devolviera precio. Es lo que permite al cron repartir la tanda entre
+-- ejecuciones sin que los que nunca dan precio acaparen el turno.
+--
+-- Tabla aparte y no una columna en `products` porque el esquema se reejecuta
+-- entero y SQLite no tiene `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`.
+CREATE TABLE IF NOT EXISTS product_checks (
+  product_id INTEGER PRIMARY KEY REFERENCES products (id) ON DELETE CASCADE,
+  checked_at TEXT NOT NULL                             -- ISO-8601
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_checks_when
+  ON product_checks (checked_at);
+
 CREATE VIEW IF NOT EXISTS tracked_products AS
 SELECT DISTINCT p.id, p.jan, p.name
 FROM products p

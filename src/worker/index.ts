@@ -99,6 +99,26 @@ const PHOTO_TYPES = new Set([
 /** Respaldo por si la compresión del navegador no llegó a ejecutarse. */
 const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
 
+/**
+ * Techos del cron en el plan gratuito, que son tres y aprietan por sitios
+ * distintos (verificado en la documentación de límites de Cloudflare):
+ *
+ * - **50 subrequests externas por invocación.** Cada producto gasta dos (Yahoo
+ *   y Rakuten) y cada aviso por webhook gasta una más.
+ * - **10 ms de CPU.** Dormir y esperar a una API no cuentan, pero parsear la
+ *   respuesta de Rakuten sí, y son 30 artículos por producto.
+ * - **15 min de reloj.** Con la pausa de 1,1 s es el único que sobra.
+ *
+ * De ahí que la tanda vaya acotada y los productos roten entre ejecuciones por
+ * `product_checks`. Sin esto, pasados unos 25 productos el cron se quedaría a
+ * medias SIN DECIR NADA, que es el modo de fallo que más caro ha salido aquí.
+ *
+ * Para cubrir más por día se pueden añadir horas a `crons` en wrangler.toml:
+ * el plan gratuito admite 5 Cron Triggers por cuenta.
+ */
+const CRON_BATCH = 15;
+const CRON_SUBREQUESTS = 40;
+
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 
 const json = (data: unknown, status = 200) =>
@@ -960,83 +980,127 @@ export default {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(
       (async () => {
+        // Los menos recientemente mirados primero. En SQLite los NULL ordenan
+        // antes que cualquier valor en ASC, así que los que no se han mirado
+        // nunca encabezan la lista solos, sin tener que decirlo.
         const { results: products } = await env.DB.prepare(
-          `SELECT id, jan, name FROM tracked_products`
-        ).all<{ id: number; jan: string; name: string }>();
+          `SELECT tp.id, tp.jan, tp.name
+           FROM tracked_products tp
+           LEFT JOIN product_checks pc ON pc.product_id = tp.id
+           ORDER BY pc.checked_at ASC
+           LIMIT ?1`
+        )
+          .bind(CRON_BATCH)
+          .all<{ id: number; jan: string; name: string }>();
 
         const map = await slugs(env.DB);
+        const marcar = env.DB.prepare(
+          `INSERT INTO product_checks (product_id, checked_at) VALUES (?1, ?2)
+           ON CONFLICT (product_id) DO UPDATE SET checked_at = excluded.checked_at`
+        );
+
+        // Cuenta de subrequests externas. El límite no avisa: al pasarlo, la
+        // llamada lanza y se llevaría por delante el resto de la tanda.
+        let gastadas = 0;
+        let hechos = 0;
 
         for (const product of products) {
-          const [yahoo, rakuten] = await Promise.all([
-            yahooByJan(product.jan, env),
-            rakutenByJan(product.jan, env),
-          ]);
-          // Se filtra aquí y no solo dentro de savePrices porque el aviso hace
-          // map.shops.get(slug)! sin red: una tienda que no esté en la tabla
-          // (esquema sin actualizar) sería un bind con undefined.
-          const found = [...(yahoo ? [yahoo] : []), ...rakuten].filter(
-            (p) => map.shops.has(p.shopSlug) && map.conditions.has(p.conditionSlug)
-          );
+          // Dos por producto, más hueco para los avisos de este.
+          if (gastadas + 2 > CRON_SUBREQUESTS) break;
+          gastadas += 2;
 
-          if (found.length > 0) {
-            await savePrices(env, product.id, found);
+          // Se anota ANTES de consultar: si este producto falla siempre, que no
+          // se quede eternamente el primero de la cola bloqueando a los demás.
+          await marcar.bind(product.id, new Date().toISOString()).run();
+          hechos += 1;
 
-            // El más barato DE CADA GRADO, no el más barato a secas. Mezclarlos
-            // avisaría de que tu figura usada ha bajado porque hay una nueva
-            // barata en tienda: justo la comparación que este proyecto evita.
-            const bestByCondition = new Map<string, ShopPrice>();
-            for (const p of found) {
-              const prev = bestByCondition.get(p.conditionSlug);
-              if (!prev || p.price < prev.price) bestByCondition.set(p.conditionSlug, p);
-            }
+          try {
+            const [yahoo, rakuten] = await Promise.all([
+              yahooByJan(product.jan, env),
+              rakutenByJan(product.jan, env),
+            ]);
+            // Se filtra aquí y no solo dentro de savePrices porque el aviso hace
+            // map.shops.get(slug)! sin red: una tienda que no esté en la tabla
+            // (esquema sin actualizar) sería un bind con undefined.
+            const found = [...(yahoo ? [yahoo] : []), ...rakuten].filter(
+              (p) => map.shops.has(p.shopSlug) && map.conditions.has(p.conditionSlug)
+            );
 
-            for (const [conditionSlug, best] of bestByCondition) {
-              const conditionId = map.conditions.get(conditionSlug);
-              if (conditionId === undefined) continue;
+            if (found.length > 0) {
+              await savePrices(env, product.id, found);
 
-              // Objetivos por encima de este precio, sin aviso reciente, y solo
-              // de quien tenga un ejemplar DE ESTE grado.
-              const { results: hits } = await env.DB.prepare(
-                `SELECT ui.id, u.webhook_url
-                 FROM user_items ui
-                 JOIN users u     ON u.id = ui.user_id
-                 JOIN statuses st ON st.id = ui.status_id
-                 WHERE ui.product_id = ?1
-                   AND st.track_price = 1
-                   AND ui.condition_id = ?3
-                   AND ui.target_price IS NOT NULL
-                   AND ui.target_price >= ?2
-                   AND NOT EXISTS (
-                     SELECT 1 FROM alert_log al
-                     WHERE al.user_item_id = ui.id
-                       AND al.price <= ?2
-                       AND al.notified_at > datetime('now', '-14 days')
-                   )`
-              )
-                .bind(product.id, best.price, conditionId)
-                .all<{ id: number; webhook_url: string | null }>();
+              // El más barato DE CADA GRADO, no el más barato a secas. Mezclarlos
+              // avisaría de que tu figura usada ha bajado porque hay una nueva
+              // barata en tienda: justo la comparación que este proyecto evita.
+              const bestByCondition = new Map<string, ShopPrice>();
+              for (const p of found) {
+                const prev = bestByCondition.get(p.conditionSlug);
+                if (!prev || p.price < prev.price) bestByCondition.set(p.conditionSlug, p);
+              }
 
-              for (const hit of hits) {
-                if (hit.webhook_url) {
-                  await fetch(hit.webhook_url, {
-                    method: 'POST',
-                    headers: JSON_HEADERS,
-                    body: JSON.stringify({
-                      content: `${product.name} — ¥${best.price.toLocaleString('ja-JP')} (${best.shopSlug})\n${best.url ?? ''}`,
-                    }),
-                  }).catch(() => {});
-                }
-                await env.DB.prepare(
-                  `INSERT INTO alert_log (user_item_id, price, shop_id) VALUES (?1, ?2, ?3)`
+              for (const [conditionSlug, best] of bestByCondition) {
+                const conditionId = map.conditions.get(conditionSlug);
+                if (conditionId === undefined) continue;
+
+                // Objetivos por encima de este precio, sin aviso reciente, y solo
+                // de quien tenga un ejemplar DE ESTE grado.
+                const { results: hits } = await env.DB.prepare(
+                  `SELECT ui.id, u.webhook_url
+                   FROM user_items ui
+                   JOIN users u     ON u.id = ui.user_id
+                   JOIN statuses st ON st.id = ui.status_id
+                   WHERE ui.product_id = ?1
+                     AND st.track_price = 1
+                     AND ui.condition_id = ?3
+                     AND ui.target_price IS NOT NULL
+                     AND ui.target_price >= ?2
+                     AND NOT EXISTS (
+                       SELECT 1 FROM alert_log al
+                       WHERE al.user_item_id = ui.id
+                         AND al.price <= ?2
+                         AND al.notified_at > datetime('now', '-14 days')
+                     )`
                 )
-                  .bind(hit.id, best.price, map.shops.get(best.shopSlug)!)
-                  .run();
+                  .bind(product.id, best.price, conditionId)
+                  .all<{ id: number; webhook_url: string | null }>();
+
+                for (const hit of hits) {
+                  if (hit.webhook_url && gastadas < CRON_SUBREQUESTS) {
+                    gastadas += 1;
+                    await fetch(hit.webhook_url, {
+                      method: 'POST',
+                      headers: JSON_HEADERS,
+                      body: JSON.stringify({
+                        content: `${product.name} — ¥${best.price.toLocaleString('ja-JP')} (${best.shopSlug})\n${best.url ?? ''}`,
+                      }),
+                    }).catch(() => {});
+                  }
+                  await env.DB.prepare(
+                    `INSERT INTO alert_log (user_item_id, price, shop_id) VALUES (?1, ?2, ?3)`
+                  )
+                    .bind(hit.id, best.price, map.shops.get(best.shopSlug)!)
+                    .run();
+                }
               }
             }
+
+          } catch (err) {
+            // Un producto que falla no puede llevarse la tanda entera por
+            // delante: ya quedó marcado, así que el siguiente día le toca a otro.
+            console.warn(`cron: ${product.jan} (${product.name}) falló`, err);
           }
 
           await sleep(1100); // respeta el límite de 1 req/s de Yahoo
         }
+
+        // Queda en `wrangler tail`. Si `pendientes` nunca baja de cero es que
+        // la colección creció más de lo que una tanda diaria puede cubrir.
+        const total = await env.DB.prepare(
+          `SELECT COUNT(*) AS n FROM tracked_products`
+        ).first<{ n: number }>();
+        console.log(
+          `cron: ${hechos} productos de ${total?.n ?? '?'}, ${gastadas} subrequests`
+        );
       })()
     );
   },

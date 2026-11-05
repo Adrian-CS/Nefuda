@@ -165,9 +165,8 @@ el escaneo por JAN da precio de nuevo y de segunda mano, y las fotos suben a R2.
 1. La fila de cada artículo en la colección sigue enseñando `best_price`, que es precio de
    tienda, mientras la cabecera ya suma lo pagado. No está mal, son cosas distintas, pero
    conviene mirar si se entiende.
-2. El cron no tiene techo de subrequests. En el plan gratuito son 50 por invocación, y
-   cada producto gasta dos. Pasados ~25 productos seguidos dejaría de consultar en
-   silencio.
+2. Vigilar en `wrangler tail` la línea `cron: N productos de M`. Si M se dispara por
+   encima de lo que cubre una tanda diaria, tocará añadir horas a `crons`.
 
 ---
 
@@ -246,6 +245,29 @@ iOS hace zoom al enfocarlos.
   escaparate de 楽天市場, y su web propia es otro catálogo distinto de los dos.
 - **Yahoo limita a 1 consulta por segundo** (y 50.000 al día por App ID). El cron duerme
   1,1 s entre productos. No quitar esa pausa.
+- **El cron tiene tres techos en el plan gratuito y aprietan por sitios distintos.**
+  Comprobados en la documentación de límites de Cloudflare, no de memoria:
+
+  | Techo | Plan gratuito | Qué lo gasta aquí |
+  |---|---|---|
+  | Subrequests externas por invocación | 50 | 2 por producto, +1 por aviso |
+  | CPU | 10 ms | parsear 30 artículos de Rakuten por producto |
+  | Reloj | 15 min | la pausa de 1,1 s; es el único que sobra |
+
+  D1 y R2 también cuentan como subrequests, pero van contra el tope aparte de servicios
+  internos (1.000), no contra las 50.
+
+  Por eso la tanda va acotada (`CRON_BATCH`), hay un contador de subrequests que corta
+  (`CRON_SUBREQUESTS`) y los productos rotan por `product_checks`: se consultan primero
+  los que hace más que no se miran. Sin esto, pasados unos 25 productos el cron se
+  quedaba a medias **sin decir nada**.
+
+  Se marca el producto ANTES de consultarlo, a propósito: uno que falle siempre no puede
+  quedarse eternamente el primero de la cola bloqueando al resto. Y cada producto va en
+  su `try`, que una caída no se lleve la tanda entera.
+
+  Para cubrir más por día se añaden horas a `crons` en `wrangler.toml`; el plan gratuito
+  admite 5 Cron Triggers por cuenta.
 - **El App ID de Yahoo no puede exponerse.** Las llamadas salen del Worker, nunca del
   navegador.
 - **No añadir validación del dígito de control al escáner: no serviría de nada.** Se
