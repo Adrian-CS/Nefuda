@@ -39,7 +39,10 @@ export default function Collection() {
     return {
       pieces: mine.length,
       spent: mine.reduce((sum, i) => sum + (i.paid_price ?? 0), 0),
-      worth: mine.reduce((sum, i) => sum + (i.best_price ?? i.paid_price ?? 0), 0),
+      // Primero lo que pagaste, que es el dato que de verdad conoces; el precio
+      // de tienda solo cuando no lo apuntaste. Al revés, un ejemplar comprado
+      // de oferta figuraría a precio de escaparate y el total sería ficción.
+      worth: mine.reduce((sum, i) => sum + (i.paid_price ?? i.best_price ?? 0), 0),
     };
   }, [items, inCollection]);
 

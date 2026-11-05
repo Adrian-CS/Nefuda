@@ -1,5 +1,7 @@
 /** Tipos que devuelve el Worker. Mantenlos alineados con schema.sql. */
 
+import { compressPhoto } from './photo';
+
 export interface VocabRow {
   id: number;
   slug: string;
@@ -257,10 +259,13 @@ export const api = {
 
   /** Sube una foto propia a R2 a través del Worker. */
   uploadPhoto: async (itemId: number, file: File) => {
+    // Se comprime aquí y no en cada pantalla: así pasan por el mismo sitio
+    // tanto la del alta como la de la ficha.
+    const photo = await compressPhoto(file);
     const res = await fetch(`/api/items/${itemId}/photo`, {
       method: 'PUT',
-      headers: { 'content-type': file.type },
-      body: file,
+      headers: { 'content-type': photo.type },
+      body: photo,
     });
     if (!res.ok) throw new ApiError(res.status, 'no se pudo subir la foto');
     return res.json() as Promise<{ photo_key: string }>;

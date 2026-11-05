@@ -59,8 +59,45 @@ const USED_MARKER = /中古|ユーズド|\bused\b/i;
  */
 const EBOOK_MARKER = /電子書籍|kobo-ebooks|ebook/i;
 
+/**
+ * Lotes: «全巻セット», «1-26巻セット», tiendas de «おまとめ». El precio de un
+ * paquete de 26 tomos guardado como si fuera un tomo miente por 26.
+ *
+ * Se mira el título Y el nombre de la tienda, porque los dos casos reales que
+ * aparecieron venían por sitios distintos: el pack de アオのハコ lo decía en el
+ * título, y el CD a ¥30.374 lo delataba la tienda («おまとめ店»).
+ *
+ * `セット` a secas se queda fuera a propósito: hay productos que SON un set y
+ * se venden como una pieza, y descartarlos sería perder su precio bueno.
+ */
+const LOT_MARKER = /全巻|巻セット|冊セット|まとめ売り|おまとめ|セット売り/;
+
+/**
+ * Y el segundo filtro, para los lotes que no se anuncian como tales: cualquier
+ * precio más de 10 veces por encima del más barato de la respuesta.
+ *
+ * Los dos filtros hacen falta porque fallan en casos opuestos. El del título
+ * funciona aunque el lote sea el ÚNICO anuncio; este no, porque entonces no hay
+ * contra qué comparar. A cambio, este pilla al que no lo pone en ninguna parte:
+ * el mismo CD a ¥374 y a ¥30.374 en otra tienda.
+ */
+const LOT_FACTOR = 10;
+
 /** Lo único que se acepta subir a R2, y lo único que se devuelve al servirlo. */
-const PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif']);
+const PHOTO_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/avif',
+  'image/gif',
+  // El navegador comprime a JPEG antes de subir; estos solo llegan si esa
+  // compresión falló y se mandó el fichero original del móvil tal cual.
+  'image/heic',
+  'image/heif',
+]);
+
+/** Respaldo por si la compresión del navegador no llegó a ejecutarse. */
+const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 
@@ -182,6 +219,11 @@ async function rakutenByJan(jan: string, env: Env): Promise<ShopPrice[]> {
   const found: ShopPrice[] = [];
   const seen = new Set<string>();
 
+  // Referencia para el filtro de desorbitados: el más barato que haya pasado
+  // todo lo demás. Como vienen ordenados de forma ascendente, es el primero, y
+  // un lote nunca llega a serlo porque se descarta antes de llegar aquí.
+  let floor: number | null = null;
+
   // Vienen ordenados por precio ascendente, así que el primero de cada tienda
   // ya es el más barato de esa tienda: con quedarse con ese basta.
   for (const raw of items) {
@@ -193,6 +235,13 @@ async function rakutenByJan(jan: string, env: Env): Promise<ShopPrice[]> {
 
     // El mismo título al mismo precio, pero es un archivo, no el tomo.
     if (EBOOK_MARKER.test(name) || EBOOK_MARKER.test(String(hit.shopCode ?? ''))) continue;
+
+    // Un lote no es una pieza. Se mira título y tienda: cada caso real que
+    // apareció lo decía en un sitio distinto.
+    if (LOT_MARKER.test(name) || LOT_MARKER.test(String(hit.shopName ?? ''))) continue;
+
+    if (floor === null) floor = price;
+    else if (price > floor * LOT_FACTOR) continue;
 
     // Quien manda es el TÍTULO, no la tienda. Se vio con datos reales: 駿河屋
     // marca 【中古】, y hay otras tiendas de segunda mano que también lo marcan
@@ -435,6 +484,9 @@ async function putPhoto(userId: string, itemId: string, request: Request, env: E
   // dejarse un script guardado corriendo en el origen de la propia sesión.
   const type = (request.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
   if (!PHOTO_TYPES.has(type)) return { error: 'el fichero no es una imagen' };
+
+  const declared = Number(request.headers.get('content-length') ?? 0);
+  if (declared > PHOTO_MAX_BYTES) return { error: 'la foto es demasiado grande' };
 
   // El prefijo con el user_id es lo que impide que nadie lea las fotos de otro.
   const key = `fotos/${userId}/${crypto.randomUUID()}`;

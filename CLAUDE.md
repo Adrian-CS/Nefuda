@@ -111,6 +111,12 @@ prohíben). Detalles que importan:
   grado**. Antes sin precio que con el precio equivocado.
 - Son tiendas, no C2C: sus precios van por encima de lo que se cierra en Mercari. Es
   «segunda mano en tienda», no «lo que vale en Mercari».
+- **Los lotes se descartan** (`LOT_MARKER` y `LOT_FACTOR`). Guardar un pack de 26 tomos
+  como si fuera un tomo miente por 26. Hacen falta los dos filtros porque fallan en casos
+  opuestos: el del título vale aunque el lote sea el ÚNICO anuncio, y el del precio
+  (más de 10× el más barato de la respuesta) pilla al que no se anuncia como lote. Ojo:
+  `セット` a secas NO está en la lista, porque hay productos que son un set y se venden
+  como una pieza.
 - **La segunda mano puede salir MÁS CARA que el producto nuevo, y no es un error.** Visto
   con アオのハコ 24: ¥572 nuevo (precio de cubierta) y ¥660 usado en 駿河屋. En manga de
   serie viva el nuevo vale lo que pone en la contraportada, mientras que el de segunda
@@ -156,14 +162,12 @@ el escaneo por JAN da precio de nuevo y de segunda mano, y las fotos suben a R2.
 
 ### Lo siguiente
 
-1. **Anuncios que son lotes.** Visto de verdad: el pack de 26 tomos de アオのハコ a ¥13.280
-   y un CD de ¥374 listado a ¥30.374 por tiendas de «おまとめ». Ahora mismo salva el orden
-   ascendente —se coge el más barato— pero en algo descatalogado donde el lote sea el
-   único anuncio, ese precio entraría como si fuera de una pieza.
-2. El valor de la colección usa precios de tienda, que es lo que CUESTA comprarlo, no lo
-   que te darían por venderlo. Decidir si eso se renombra en la interfaz.
-3. Nada limita el tamaño de la foto que se sube. Con dos personas da igual, pero R2 son
-   10 GB y el Worker acepta hasta 100 MB por petición.
+1. La fila de cada artículo en la colección sigue enseñando `best_price`, que es precio de
+   tienda, mientras la cabecera ya suma lo pagado. No está mal, son cosas distintas, pero
+   conviene mirar si se entiende.
+2. El cron no tiene techo de subrequests. En el plan gratuito son 50 por invocación, y
+   cada producto gasta dos. Pasados ~25 productos seguidos dejaría de consultar en
+   silencio.
 
 ---
 
@@ -203,6 +207,14 @@ iOS hace zoom al enfocarlos.
 - **Las fotos propias van a R2 con prefijo `fotos/{user_id}/`** y se sirven por
   `/api/photo/...`, que comprueba el prefijo. Las imágenes de producto se enlazan al CDN
   de la tienda, no se copian.
+- **La foto se comprime en el navegador antes de subirla** (`src/lib/photo.ts`): 1600 px
+  de lado mayor y JPEG al 82 %. Solo tiene que servir para reconocer qué ejemplar es. Va
+  dentro de `api.uploadPhoto`, así pasan por ahí el alta y la ficha. Si la compresión
+  falla se sube el original: una foto peor es mejor que un alta perdida.
+- **El valor de la colección es, por este orden, lo que pagaste y luego el precio de
+  tienda de TU grado.** Lo que pagaste es el dato que de verdad se conoce; al revés, un
+  ejemplar comprado de oferta figuraría a precio de escaparate. Por eso la cifra se llama
+  «valor estimado» y no «ahora vale»: no es lo que te darían por venderlo.
 
 ---
 

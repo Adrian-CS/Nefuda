@@ -270,11 +270,14 @@ SELECT
   -- un precio de segunda mano rebajaba el valor de un ejemplar nuevo. Daba
   -- igual mientras todos los precios eran 'new'; desde que 駿河屋 y compañía
   -- entran por Rakuten, ya no.
+  -- Mismo orden que en la cabecera que pinta Collection.tsx: primero lo que
+  -- pagaste, y el precio de tienda (acotado a TU grado) solo si no lo hay.
   SUM(COALESCE(
+    ui.paid_price,
     (SELECT MIN(lp.price) FROM latest_prices lp
       WHERE lp.product_id = ui.product_id
         AND lp.condition_id = ui.condition_id),
-    ui.paid_price, 0
+    0
   ))                      AS worth
 FROM user_items ui
 JOIN statuses s ON s.id = ui.status_id
